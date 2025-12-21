@@ -10,6 +10,12 @@ This is a simple todo list application built using the [OpenAI Apps SDK](https:/
 - Create an MCP server to expose tools to ChatGPT
 - Use the `window.openai` bridge to communicate between your app and ChatGPT
 
+## Architecture (Agentic CRE Platform)
+
+The production architecture for the agentic CRE platform (ingestion, underwriting, scenario modeling, comps, capital stack, approvals) and its mapping to the OpenAI Apps SDK + MCP tooling is documented here:
+
+- [Agentic CRE Architecture](docs/cre-architecture.md)
+
 ## Project Structure
 
 ```
