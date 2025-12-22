@@ -441,28 +441,45 @@ static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, 
                 continue;
             }
 
-            // Support direct cell references like "Assumptions!$P$27" or named ranges
-            if (spec.Name.Contains("!"))
+            try
             {
-                // Direct cell reference - parse sheet and cell
-                var parts = spec.Name.Split('!');
-                var sheetName = parts[0].Trim('\'');
-                var cellRef = parts[1].Replace("$", "");
-                var worksheet = package.Workbook.Worksheets[sheetName];
-                if (worksheet != null)
+                // Support direct cell references like "Assumptions!$P$27" or named ranges
+                if (spec.Name.Contains("!"))
                 {
-                    worksheet.Cells[cellRef].Value = value;
+                    // Direct cell reference - parse sheet and cell
+                    var parts = spec.Name.Split('!');
+                    var sheetName = parts[0].Trim('\'');
+                    var cellRef = parts[1].Replace("$", "");
+                    var worksheet = package.Workbook.Worksheets[sheetName];
+                    if (worksheet != null)
+                    {
+                        worksheet.Cells[cellRef].Value = value;
+                    }
+                }
+                else
+                {
+                    var namedRange = FindNamedRange(package, spec.Name);
+                    if (namedRange == null)
+                    {
+                        // Skip if named range doesn't exist in template (optional)
+                        continue;
+                    }
+                    namedRange.Value = value;
                 }
             }
-            else
+            catch (Exception ex)
             {
-                var namedRange = FindNamedRange(package, spec.Name);
-                if (namedRange == null)
+                LogStructured("ERROR", "Named range write failed", new
                 {
-                    // Skip if named range doesn't exist in template (optional)
-                    continue;
-                }
-                namedRange.Value = value;
+                    specKey = spec.Key,
+                    specName = spec.Name,
+                    specPath = spec.Path,
+                    rawValue = value?.ToString(),
+                    valueType = value?.GetType().Name,
+                    error = ex.Message,
+                    stackTrace = ex.StackTrace
+                });
+                throw;
             }
         }
 
@@ -893,13 +910,37 @@ static object? ConvertScalar(JsonElement element, string path)
     if (element.ValueKind == JsonValueKind.String)
     {
         var str = element.GetString();
+        if (str == null) return null;
+
         // Convert ISO 8601 date strings to DateTime for Excel compatibility
-        // Matches patterns like "2025-01-01" or "2025-12-31"
-        if (str != null && str.Length == 10 && str[4] == '-' && str[7] == '-' &&
-            DateTime.TryParseExact(str, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var date))
+        // Supports: "2025-01-01" (date only) and "2025-01-01T00:00:00Z" (full ISO datetime)
+        if (str.Length >= 10 && str[4] == '-' && str[7] == '-')
         {
-            return date;
+            // Try date-only format first (yyyy-MM-dd)
+            if (str.Length == 10 &&
+                DateTime.TryParseExact(str, "yyyy-MM-dd",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var dateOnly))
+            {
+                return dateOnly;
+            }
+
+            // Try full ISO datetime formats
+            string[] isoFormats = {
+                "yyyy-MM-ddTHH:mm:ssZ",
+                "yyyy-MM-ddTHH:mm:ss.fffZ",
+                "yyyy-MM-ddTHH:mm:ss",
+                "yyyy-MM-ddTHH:mm:sszzz"
+            };
+            if (DateTime.TryParseExact(str, isoFormats,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
+                out var isoDateTime))
+            {
+                return isoDateTime;
+            }
         }
+
         return str;
     }
 
@@ -1244,15 +1285,41 @@ static void WriteTableRow(ExcelTable table, int rowIndex, JsonElement rowElement
     {
         foreach (var mapping in explicitMapping)
         {
-            if (rowElement.TryGetProperty(mapping.Key, out var valueElement))
-            {
-                worksheet.Cells[targetRow, startCol + mapping.Value - 1].Value = ConvertScalar(valueElement, mapping.Key);
-                continue;
-            }
+            object? cellValue = null;
+            string? rawValue = null;
 
-            if (TryResolveNestedValue(rowElement, mapping.Key, out var nestedValue))
+            try
             {
-                worksheet.Cells[targetRow, startCol + mapping.Value - 1].Value = ConvertScalar(nestedValue, mapping.Key);
+                if (rowElement.TryGetProperty(mapping.Key, out var valueElement))
+                {
+                    rawValue = valueElement.ToString();
+                    cellValue = ConvertScalar(valueElement, mapping.Key);
+                    worksheet.Cells[targetRow, startCol + mapping.Value - 1].Value = cellValue;
+                    continue;
+                }
+
+                if (TryResolveNestedValue(rowElement, mapping.Key, out var nestedValue))
+                {
+                    rawValue = nestedValue.ToString();
+                    cellValue = ConvertScalar(nestedValue, mapping.Key);
+                    worksheet.Cells[targetRow, startCol + mapping.Value - 1].Value = cellValue;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogStructured("ERROR", "Table cell write failed", new
+                {
+                    tableName = table.Name,
+                    colHeader = mapping.Key,
+                    colIndex = mapping.Value,
+                    rowIndex,
+                    rawValue,
+                    convertedValue = cellValue?.ToString(),
+                    convertedType = cellValue?.GetType().Name,
+                    error = ex.Message,
+                    stackTrace = ex.StackTrace
+                });
+                throw;
             }
         }
 
@@ -1271,7 +1338,31 @@ static void WriteTableRow(ExcelTable table, int rowIndex, JsonElement rowElement
         var key = NormalizeKey(header);
         if (normalizedValues.TryGetValue(key, out var valueElement))
         {
-            worksheet.Cells[targetRow, startCol + colIndex].Value = ConvertScalar(valueElement, header);
+            object? cellValue = null;
+            string? rawValue = null;
+
+            try
+            {
+                rawValue = valueElement.ToString();
+                cellValue = ConvertScalar(valueElement, header);
+                worksheet.Cells[targetRow, startCol + colIndex].Value = cellValue;
+            }
+            catch (Exception ex)
+            {
+                LogStructured("ERROR", "Table cell write failed", new
+                {
+                    tableName = table.Name,
+                    colHeader = header,
+                    colIndex,
+                    rowIndex,
+                    rawValue,
+                    convertedValue = cellValue?.ToString(),
+                    convertedType = cellValue?.GetType().Name,
+                    error = ex.Message,
+                    stackTrace = ex.StackTrace
+                });
+                throw;
+            }
         }
     }
 }
