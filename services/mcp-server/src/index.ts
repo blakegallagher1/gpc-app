@@ -151,7 +151,7 @@ const DEFAULT_VALUES: Record<string, unknown> = {
   "exit.forward_noi_months": 12,
 };
 
-// Build CSP directives for Apps SDK widget
+// Build CSP directives for Apps SDK widget (legacy HTML meta tag)
 function buildCsp(requestHost?: string): string {
   const widgetHost = new URL(WIDGET_PUBLIC_URL).origin;
   // Use request host in production, fallback to localhost for dev
@@ -194,6 +194,40 @@ function buildCsp(requestHost?: string): string {
   ].join('; ');
 }
 
+// Build Apps SDK widgetCSP object for MCP resource metadata
+function buildWidgetCsp(): Record<string, unknown> {
+  const widgetUrl = new URL(WIDGET_PUBLIC_URL);
+  const widgetHost = widgetUrl.hostname;
+
+  // Extract B2 download hosts
+  const b2Hosts = [
+    "f005.backblazeb2.com",
+    "f004.backblazeb2.com",
+    "f003.backblazeb2.com",
+    "f002.backblazeb2.com",
+    "f001.backblazeb2.com",
+  ];
+
+  // Add custom B2 download URL if specified
+  if (B2_DOWNLOAD_URL) {
+    try {
+      const customB2Host = new URL(B2_DOWNLOAD_URL).hostname;
+      if (!b2Hosts.includes(customB2Host)) {
+        b2Hosts.unshift(customB2Host);
+      }
+    } catch {
+      // Invalid URL, skip
+    }
+  }
+
+  return {
+    script_domains: [widgetHost],
+    style_domains: [widgetHost],
+    connect_domains: [widgetHost],
+    redirect_domains: b2Hosts,
+  };
+}
+
 // Widget HTML template for ChatGPT Apps SDK
 function getWidgetHtml(): string {
   const csp = buildCsp();
@@ -225,6 +259,9 @@ function createIndAcqServer() {
     {
       description: "IND_ACQ Underwriting Widget UI",
       mimeType: "text/html+skybridge",
+      _meta: {
+        "openai/widgetCSP": buildWidgetCsp(),
+      },
     },
     async () => ({
       contents: [
@@ -244,8 +281,17 @@ function createIndAcqServer() {
       title: "Validate IND_ACQ inputs",
       description: "Validates inputs for the IND_ACQ underwriting model.",
       inputSchema: validateInputsInputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false,
+        idempotentHint: true,
+      },
       _meta: {
         json_schema: toolInputJsonSchemas.validate_inputs,
+        securitySchemes: [{ type: "noauth" }],
+        "openai/outputTemplate": "ui://widget/ind-acq",
+        "openai/widgetAccessible": true,
         "openai/toolInvocation/invoking": "Validating underwriting inputs...",
         "openai/toolInvocation/invoked": "Input validation complete",
       },
@@ -263,9 +309,17 @@ function createIndAcqServer() {
       title: "Build IND_ACQ model",
       description: "Builds the IND_ACQ underwriting model. Supports natural language extraction via natural_language parameter.",
       inputSchema: buildModelInputSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: false,
+        idempotentHint: false,
+      },
       _meta: {
         json_schema: toolInputJsonSchemas.build_model,
+        securitySchemes: [{ type: "noauth" }],
         "openai/outputTemplate": "ui://widget/ind-acq",
+        "openai/widgetAccessible": true,
         "openai/toolInvocation/invoking": "Building underwriting model...",
         "openai/toolInvocation/invoked": "Model build started",
       },
@@ -413,9 +467,17 @@ function createIndAcqServer() {
       title: "Get IND_ACQ run status",
       description: "Retrieves status for a build job.",
       inputSchema: getRunStatusInputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false,
+        idempotentHint: true,
+      },
       _meta: {
         json_schema: toolInputJsonSchemas.get_run_status,
+        securitySchemes: [{ type: "noauth" }],
         "openai/outputTemplate": "ui://widget/ind-acq",
+        "openai/widgetAccessible": true,
         "openai/toolInvocation/invoking": "Checking job status...",
         "openai/toolInvocation/invoked": "Status retrieved",
       },
@@ -509,11 +571,68 @@ function validateInputs(inputs: unknown): ValidationResult {
 
 function buildToolResponse(result: ToolResult) {
   const jobId = "job_id" in result ? result.job_id : undefined;
+
+  // Minimize structuredContent - move large payloads to metadata
+  let structuredContent: Record<string, unknown>;
+  let metadata: Record<string, unknown> | undefined;
+
+  if (result.status === "complete" && "outputs" in result) {
+    // Extract summary metrics for model visibility
+    const summaryMetrics = extractSummaryMetrics(result.outputs);
+
+    structuredContent = {
+      status: result.status,
+      job_id: result.job_id,
+      checks: {
+        status: result.outputs["out.checks.status"],
+        error_count: result.outputs["out.checks.error_count"],
+      },
+      metrics: summaryMetrics,
+      download_url: result.download_url,
+      download_url_expiry: result.download_url_expiry,
+    };
+
+    // Full outputs in metadata for widget consumption
+    metadata = {
+      job_id: jobId,
+      full_outputs: result.outputs,
+      file_path: result.file_path,
+    };
+  } else {
+    // For non-complete statuses, keep structuredContent as-is
+    structuredContent = result as Record<string, unknown>;
+    metadata = jobId ? { job_id: jobId } : undefined;
+  }
+
   return {
     content: resultToContent(result),
-    structuredContent: result,
-    _meta: jobId ? { job_id: jobId } : undefined,
+    structuredContent,
+    _meta: metadata,
   };
+}
+
+// Extract summary metrics for model visibility (small footprint)
+function extractSummaryMetrics(outputs: Record<string, unknown>): Record<string, unknown> {
+  const summaryKeys = [
+    "out.returns.unlevered.irr",
+    "out.returns.levered.irr",
+    "out.returns.investor.irr",
+    "out.returns.unlevered.multiple",
+    "out.returns.levered.multiple",
+    "out.returns.investor.multiple",
+    "out.debt.total_proceeds",
+    "out.cashflow.year_1_noi",
+    "out.cashflow.stabilized_noi",
+    "out.exit.sale_proceeds",
+  ];
+
+  const summary: Record<string, unknown> = {};
+  for (const key of summaryKeys) {
+    if (key in outputs) {
+      summary[key] = outputs[key];
+    }
+  }
+  return summary;
 }
 
 function resultToContent(result: ToolResult) {
