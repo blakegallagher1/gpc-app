@@ -5,11 +5,12 @@ WORKDIR /app
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Copy package files from mcp-server
-COPY services/mcp-server/package.json services/mcp-server/pnpm-lock.yaml* ./
+# Copy package file and root lockfile (workspace setup)
+COPY services/mcp-server/package.json ./
+COPY pnpm-lock.yaml* ./
 
 # Install dependencies
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile || pnpm install
 
 # Copy source
 COPY services/mcp-server/ .
@@ -24,14 +25,12 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Copy package files and built code
-COPY --from=build /app/package.json /app/pnpm-lock.yaml* ./
+COPY --from=build /app/package.json ./
+COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 
 # Copy contracts from repo
 COPY contracts ./contracts
-
-# Install production dependencies only
-RUN pnpm install --prod --frozen-lockfile
 
 # Environment
 ENV NODE_ENV=production
