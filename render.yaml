@@ -62,3 +62,9 @@ services:
       # B2 download URL for CSP (set to match Excel Engine's B2_DOWNLOAD_URL)
       - key: B2_DOWNLOAD_URL
         sync: false
+      # OpenAI API key for NL extraction
+      - key: OPENAI_API_KEY
+        sync: false
+      # OpenAI model for NL extraction (default: gpt-4o)
+      - key: OPENAI_MODEL
+        value: gpt-4o
