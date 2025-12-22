@@ -187,8 +187,7 @@ function buildCsp(requestHost?: string): string {
   return [
     `default-src 'none'`,
     `script-src 'self' ${widgetHost} 'unsafe-inline'`,
-    `style-src 'self' ${widgetHost} 'unsafe-inline'`,
-    `frame-src ${widgetHost}`,
+    `style-src 'self' 'unsafe-inline'`,
     `connect-src ${connectSrc.join(' ')}`,
     `img-src 'self' data:`,
   ].join('; ');
@@ -228,9 +227,10 @@ function buildWidgetCsp(): Record<string, unknown> {
   };
 }
 
-// Widget HTML template for ChatGPT Apps SDK
+// Widget HTML template for ChatGPT Apps SDK (skybridge bundle - no iframe)
 function getWidgetHtml(): string {
   const csp = buildCsp();
+  // Load skybridge.js directly - bundled React app without Next.js runtime
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -238,13 +238,10 @@ function getWidgetHtml(): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <title>IND_ACQ Widget</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body, iframe { width: 100%; height: 100%; border: none; }
-  </style>
 </head>
 <body>
-  <iframe src="${WIDGET_PUBLIC_URL}" allow="clipboard-write"></iframe>
+  <div id="root"></div>
+  <script src="${WIDGET_PUBLIC_URL}/skybridge.js"></script>
 </body>
 </html>`;
 }

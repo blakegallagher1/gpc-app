@@ -1,13 +1,37 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { InputsView } from "@/components/InputsView";
 import { ResultsView } from "@/components/ResultsView";
 import { defaultInputs } from "@/lib/default-inputs";
-import { validateInputs, buildModel, pollUntilComplete, extractFromNL } from "@/lib/mcp-client";
+import { validateInputs, buildModel, pollUntilComplete, extractFromNL, saveWidgetState, loadWidgetState, type WidgetState } from "@/lib/mcp-client";
 import type { IndAcqInputs, ValidationResult, RunState, ExtractionResult } from "@/lib/types";
 
 type View = "inputs" | "results";
+
+// Deep merge extracted inputs over defaults (defined outside component to avoid hoisting issues)
+function mergeInputs(base: IndAcqInputs, partial: Partial<IndAcqInputs>): IndAcqInputs {
+  const result = JSON.parse(JSON.stringify(base)) as IndAcqInputs;
+
+  const merge = (target: Record<string, unknown>, source: Record<string, unknown>) => {
+    for (const key of Object.keys(source)) {
+      const sourceVal = source[key];
+      if (sourceVal === null || sourceVal === undefined) continue;
+
+      if (typeof sourceVal === "object" && !Array.isArray(sourceVal)) {
+        if (!target[key] || typeof target[key] !== "object") {
+          target[key] = {};
+        }
+        merge(target[key] as Record<string, unknown>, sourceVal as Record<string, unknown>);
+      } else {
+        target[key] = sourceVal;
+      }
+    }
+  };
+
+  merge(result as unknown as Record<string, unknown>, partial as unknown as Record<string, unknown>);
+  return result;
+}
 
 export default function IndAcqWidget() {
   const [currentView, setCurrentView] = useState<View>("inputs");
@@ -17,6 +41,46 @@ export default function IndAcqWidget() {
   const [isLoading, setIsLoading] = useState(false);
   const [extractionResult, setExtractionResult] = useState<ExtractionResult | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [nlText, setNlText] = useState("");
+  const [stateLoaded, setStateLoaded] = useState(false);
+
+  // Load persisted state from ChatGPT on mount
+  useEffect(() => {
+    const savedState = loadWidgetState();
+    if (savedState) {
+      if (savedState.inputs) {
+        // Merge saved inputs over defaults to ensure structure is valid
+        setInputs((prev) => mergeInputs(prev, savedState.inputs as Partial<IndAcqInputs>));
+      }
+      if (savedState.nlText) {
+        setNlText(savedState.nlText);
+      }
+      if (savedState.activeView) {
+        setCurrentView(savedState.activeView);
+      }
+      // Note: We don't restore runState as jobs may have completed
+      // The user can re-run if needed; this avoids stale job state issues
+    }
+    setStateLoaded(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Save state to ChatGPT whenever it changes
+  const persistState = useCallback((state: WidgetState) => {
+    saveWidgetState(state);
+  }, []);
+
+  // Persist on input changes
+  useEffect(() => {
+    if (!stateLoaded) return;
+    persistState({
+      inputs: JSON.parse(JSON.stringify(inputs)) as Record<string, unknown>,
+      nlText,
+      activeView: currentView,
+      jobId: runState.phase !== "idle" && "job_id" in runState ? runState.job_id : undefined,
+      runPhase: runState.phase,
+    });
+  }, [inputs, nlText, currentView, runState, stateLoaded, persistState]);
 
   const handleValidate = async () => {
     setIsLoading(true);
@@ -132,30 +196,6 @@ export default function IndAcqWidget() {
     }
   };
 
-  // Deep merge extracted inputs over defaults
-  const mergeInputs = (base: IndAcqInputs, partial: Partial<IndAcqInputs>): IndAcqInputs => {
-    const result = JSON.parse(JSON.stringify(base)) as IndAcqInputs;
-
-    const merge = (target: Record<string, unknown>, source: Record<string, unknown>) => {
-      for (const key of Object.keys(source)) {
-        const sourceVal = source[key];
-        if (sourceVal === null || sourceVal === undefined) continue;
-
-        if (typeof sourceVal === "object" && !Array.isArray(sourceVal)) {
-          if (!target[key] || typeof target[key] !== "object") {
-            target[key] = {};
-          }
-          merge(target[key] as Record<string, unknown>, sourceVal as Record<string, unknown>);
-        } else {
-          target[key] = sourceVal;
-        }
-      }
-    };
-
-    merge(result as unknown as Record<string, unknown>, partial as unknown as Record<string, unknown>);
-    return result;
-  };
-
   return (
     <main>
       {currentView === "inputs" && (
@@ -169,6 +209,8 @@ export default function IndAcqWidget() {
           extractionResult={extractionResult}
           isLoading={isLoading}
           isExtracting={isExtracting}
+          nlText={nlText}
+          onNlTextChange={setNlText}
         />
       )}
 

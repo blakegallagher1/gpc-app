@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",
-    "build": "next build",
+    "build": "next build && pnpm build:skybridge",
+    "build:skybridge": "node esbuild.config.mjs",
+    "build:skybridge:watch": "node esbuild.config.mjs --watch",
     "start": "next start -p 3001",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
@@ -18,6 +20,7 @@
     "@types/node": "^20.16.5",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
+    "esbuild": "^0.24.0",
     "typescript": "^5.5.4"
   }
 }

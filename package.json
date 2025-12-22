@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  },
   "description": "CRE Underwriting Platform - IND_ACQ",
   "scripts": {
     "dev:mcp": "pnpm --filter @gpc/mcp-server dev",

@@ -8,6 +8,20 @@ const MAX_POLL_TIME_MS = 120000;
 interface OpenAIBridge {
   callTool: (name: string, args: Record<string, unknown>) => Promise<{ structuredContent: unknown }>;
   openExternal?: (url: string) => void;
+  setWidgetState?: (state: WidgetState) => void;
+  getWidgetState?: () => WidgetState | null;
+  toolOutput?: unknown;
+  toolResponseMetadata?: Record<string, unknown>;
+}
+
+// Widget state for ChatGPT persistence
+export interface WidgetState {
+  inputs?: Record<string, unknown>;
+  nlText?: string;
+  extractionStatus?: "idle" | "extracting" | "ok" | "needs_info" | "error";
+  activeView?: "inputs" | "results";
+  jobId?: string;
+  runPhase?: "idle" | "validating" | "building" | "polling" | "complete" | "failed";
 }
 
 interface WindowWithOpenAI extends Window {
@@ -134,4 +148,37 @@ export async function pollUntilComplete(
 export async function extractFromNL(description: string): Promise<ExtractionResult> {
   // Uses build_model with mode="extract_only" - no separate tool
   return buildModel({ natural_language: description, mode: "extract_only" });
+}
+
+/**
+ * Save widget state to ChatGPT for persistence across sessions
+ */
+export function saveWidgetState(state: WidgetState): void {
+  if (typeof window === "undefined") return;
+
+  const openai = (window as WindowWithOpenAI).openai;
+  if (openai?.setWidgetState) {
+    openai.setWidgetState(state);
+  }
+}
+
+/**
+ * Load widget state from ChatGPT
+ */
+export function loadWidgetState(): WidgetState | null {
+  if (typeof window === "undefined") return null;
+
+  const openai = (window as WindowWithOpenAI).openai;
+  if (openai?.getWidgetState) {
+    return openai.getWidgetState();
+  }
+
+  return null;
+}
+
+/**
+ * Check if running inside ChatGPT with Apps SDK available
+ */
+export function isInChatGPT(): boolean {
+  return hasOpenAIBridge();
 }

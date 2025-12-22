@@ -1,0 +1,510 @@
+/**
+ * Skybridge Entry Point
+ *
+ * This entry point mounts the IND_ACQ widget for ChatGPT Apps SDK (skybridge runtime).
+ * It replaces the Next.js app router with a vanilla React mount.
+ *
+ * The bundled output (skybridge.js) is served directly in ChatGPT's widget iframe
+ * without an iframe-within-iframe pattern.
+ */
+
+import React from "react";
+import { createRoot } from "react-dom/client";
+import IndAcqWidget from "./app/page";
+
+// Inject global styles
+const styles = `
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+    Ubuntu, sans-serif;
+  background: #f5f5f5;
+  color: #333;
+  line-height: 1.5;
+  padding: 16px;
+}
+
+h2 {
+  font-size: 1.5rem;
+  margin-bottom: 16px;
+  color: #1a1a1a;
+}
+
+h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #444;
+}
+
+/* Inputs View */
+.inputs-view {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.input-section {
+  background: white;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.section-header {
+  padding: 12px 16px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fafafa;
+  border-bottom: 1px solid #eee;
+}
+
+.section-header:hover {
+  background: #f0f0f0;
+}
+
+.section-content {
+  padding: 16px;
+}
+
+.form-row {
+  margin-bottom: 12px;
+}
+
+.form-row label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-bottom: 4px;
+  color: #555;
+}
+
+.form-row input,
+.form-row select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.form-row input:focus,
+.form-row select:focus {
+  outline: none;
+  border-color: #0066cc;
+  box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2);
+}
+
+.form-row-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* Rent Roll Table */
+.rent-roll-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+}
+
+.rent-roll-table th {
+  text-align: left;
+  padding: 8px 4px;
+  border-bottom: 2px solid #ddd;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: #666;
+}
+
+.rent-roll-table td {
+  padding: 4px;
+  border-bottom: 1px solid #eee;
+}
+
+.rent-roll-table input,
+.rent-roll-table select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-size: 0.85rem;
+}
+
+.btn-delete {
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.btn-add {
+  background: #f5f5f5;
+  border: 1px dashed #ccc;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.btn-add:hover {
+  background: #eee;
+  border-color: #999;
+}
+
+/* Buttons */
+.action-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #eee;
+}
+
+.btn {
+  padding: 10px 24px;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #0066cc;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #0052a3;
+}
+
+.btn-secondary {
+  background: white;
+  color: #333;
+  border: 1px solid #ddd;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #f5f5f5;
+}
+
+.btn-download {
+  background: #28a745;
+  color: white;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.btn-download:hover {
+  background: #218838;
+}
+
+/* NL Intake Section */
+.nl-intake-section {
+  border-left: 3px solid #6366f1;
+}
+
+.nl-intake-section .section-header {
+  background: linear-gradient(to right, #f0f0ff, #fafafa);
+}
+
+.nl-intake-description {
+  font-size: 0.9rem;
+  color: #666;
+  margin-bottom: 12px;
+}
+
+.nl-textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 100px;
+  margin-bottom: 12px;
+}
+
+.nl-textarea:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.nl-textarea::placeholder {
+  color: #999;
+  font-style: italic;
+}
+
+.btn-extract {
+  background: #6366f1;
+  color: white;
+}
+
+.btn-extract:hover:not(:disabled) {
+  background: #4f46e5;
+}
+
+.extraction-needs-info {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.extraction-needs-info h4 {
+  color: #c2410c;
+  margin-bottom: 8px;
+}
+
+.extraction-needs-info p {
+  color: #9a3412;
+  margin-bottom: 8px;
+}
+
+.missing-fields-list {
+  margin-left: 20px;
+  color: #9a3412;
+}
+
+.missing-fields-list li {
+  margin-bottom: 4px;
+}
+
+.field-example {
+  color: #78716c;
+  font-size: 0.85rem;
+}
+
+.extraction-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 12px;
+  color: #dc2626;
+}
+
+.extraction-success {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 12px;
+  color: #16a34a;
+}
+
+.field-extracted {
+  background-color: #f0fdf4;
+  border-color: #22c55e !important;
+}
+
+/* Validation Messages */
+.validation-errors {
+  background: #fff3f3;
+  border: 1px solid #ffcdd2;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.validation-errors h4 {
+  color: #c62828;
+  margin-bottom: 8px;
+}
+
+.validation-errors ul {
+  margin-left: 20px;
+}
+
+.validation-errors li {
+  color: #c62828;
+  margin-bottom: 4px;
+}
+
+.validation-success {
+  background: #e8f5e9;
+  border: 1px solid #c8e6c9;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  color: #2e7d32;
+}
+
+/* Results View */
+.results-view {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.status-banner {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-weight: 500;
+}
+
+.status-validating,
+.status-building,
+.status-polling {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.status-complete {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.status-failed {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.deal-type-row {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  border-left: 3px solid #1976d2;
+}
+
+.deal-type-label {
+  font-size: 13px;
+  color: #555;
+  font-weight: 500;
+}
+
+.check-summary {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding: 16px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.check-status {
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.check-status.status-ok {
+  color: #2e7d32;
+}
+
+.check-status.status-error {
+  color: #c62828;
+}
+
+.check-errors {
+  color: #666;
+}
+
+/* Metrics Grid */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.metric-card {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.metric-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.metric-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+/* Download Section */
+.download-section {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.file-path {
+  margin-top: 8px;
+  color: #999;
+  word-break: break-all;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .form-row-group {
+    grid-template-columns: 1fr;
+  }
+
+  .metrics-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+`;
+
+// Mount the app when DOM is ready
+function mount() {
+  // Inject styles
+  const styleEl = document.createElement("style");
+  styleEl.textContent = styles;
+  document.head.appendChild(styleEl);
+
+  // Mount React app
+  const rootEl = document.getElementById("root");
+  if (!rootEl) {
+    console.error("Skybridge: #root element not found");
+    return;
+  }
+
+  const root = createRoot(rootEl);
+  root.render(
+    <React.StrictMode>
+      <IndAcqWidget />
+    </React.StrictMode>
+  );
+}
+
+// Handle both DOMContentLoaded and already-loaded states
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", mount);
+} else {
+  mount();
+}
