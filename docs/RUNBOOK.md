@@ -72,6 +72,49 @@ Expected output: All tests pass with IRRs in target ranges (Unlevered: 8-18%, Le
 
 ---
 
+## Staging Gate
+
+Before deploying to production, run both gate tests against staging:
+
+```bash
+# Set staging MCP URL
+export MCP_URL="https://mcp-server-xxx.onrender.com"
+export OPENAI_API_KEY="sk-..."
+
+# Run regression tests
+./scripts/regression-test.sh
+
+# Run NL extraction gate tests
+./scripts/nl-gate-test.sh
+```
+
+### Gate Test Requirements
+
+| Test | Description | Pass Criteria |
+|------|-------------|---------------|
+| Regression | Core model execution | All cases pass, IRRs in range |
+| NL Gate | Extraction + validation | Complete prompts validate, incomplete return missing_fields |
+
+### NL Gate Test Cases
+
+1. **Complete single-tenant** - Returns `status=ok`, inputs validate
+2. **Complete multi-tenant** - Returns `status=ok`, 3 tenants extracted, inputs validate
+3. **Incomplete prompt** - Returns `status=needs_info`, critical fields listed as missing
+
+### Staging Deployment
+
+1. **Render Dashboard** → Deploy MCP Server and Excel Engine from main
+2. **Vercel Dashboard** → Deploy Widget from main
+3. **Verify health endpoints**:
+   ```bash
+   curl https://mcp-server-xxx.onrender.com/health
+   curl https://excel-engine-xxx.onrender.com/health
+   ```
+4. **Run gate tests** against staging URLs
+5. **Smoke test** via widget UI
+
+---
+
 ## Natural Language Intake
 
 The `build_model` tool supports natural language input for deal extraction. Users can describe a deal in plain English, and the system extracts structured inputs using GPT-5.1.

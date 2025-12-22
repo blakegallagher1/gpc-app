@@ -20,6 +20,44 @@ const WIDGET_PUBLIC_URL = process.env.WIDGET_PUBLIC_URL ?? process.env.WIDGET_UR
 const B2_DOWNLOAD_URL = process.env.B2_DOWNLOAD_URL?.trim() ?? "";
 const MCP_PATH = "/mcp";
 
+// Instrumentation logger - redacts sensitive info
+const log = {
+  info: (msg: string, meta?: Record<string, unknown>) => {
+    const safeMeta = meta ? redactSensitive(meta) : undefined;
+    console.log(`[INFO] ${msg}`, safeMeta ? JSON.stringify(safeMeta) : "");
+  },
+  warn: (msg: string, meta?: Record<string, unknown>) => {
+    const safeMeta = meta ? redactSensitive(meta) : undefined;
+    console.warn(`[WARN] ${msg}`, safeMeta ? JSON.stringify(safeMeta) : "");
+  },
+  error: (msg: string, meta?: Record<string, unknown>) => {
+    const safeMeta = meta ? redactSensitive(meta) : undefined;
+    console.error(`[ERROR] ${msg}`, safeMeta ? JSON.stringify(safeMeta) : "");
+  },
+};
+
+// Redact sensitive values from logs
+function redactSensitive(obj: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const lowerKey = key.toLowerCase();
+    // Redact auth tokens, API keys, credentials
+    if (lowerKey.includes("authorization") || lowerKey.includes("token") ||
+        lowerKey.includes("key") || lowerKey.includes("secret") ||
+        lowerKey.includes("password") || lowerKey.includes("credential")) {
+      result[key] = "[REDACTED]";
+    } else if (typeof value === "string" && value.includes("Authorization=")) {
+      // Redact B2 auth tokens in URLs
+      result[key] = value.replace(/Authorization=[^&]+/, "Authorization=[REDACTED]");
+    } else if (typeof value === "object" && value !== null) {
+      result[key] = redactSensitive(value as Record<string, unknown>);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 // Log legacy env var usage
 if (process.env.WIDGET_URL && !process.env.WIDGET_PUBLIC_URL) {
   console.warn("[WARN] Using legacy WIDGET_URL. Please migrate to WIDGET_PUBLIC_URL");
@@ -236,13 +274,26 @@ function createIndAcqServer() {
     },
     async (args) => {
       const mode = args.mode ?? "run";
+      const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       let mergedInputs = (args.inputs ?? {}) as Record<string, unknown>;
       let extractionMeta: ExtractionMeta | undefined;
+
+      log.info("build_model called", { requestId, mode, hasNL: !!args.natural_language, hasInputs: !!args.inputs });
 
       // If natural_language is provided, extract inputs first
       if (args.natural_language && typeof args.natural_language === "string" && args.natural_language.trim()) {
         try {
+          const extractionStart = Date.now();
           const extraction = await extractInputsFromNL(args.natural_language.trim());
+          const extractionDurationMs = Date.now() - extractionStart;
+
+          log.info("NL extraction complete", {
+            requestId,
+            extractionDurationMs,
+            status: extraction.status,
+            missingFieldCount: extraction.missing_fields?.length ?? 0,
+            tokenUsage: extraction.tokenUsage,
+          });
 
           if (extraction.status === "error") {
             return buildToolResponse({
@@ -341,11 +392,14 @@ function createIndAcqServer() {
 
       const payload = await response.json();
       if (!payload?.job_id) {
+        log.error("Excel engine missing job_id", { requestId });
         return buildToolResponse({
           status: "failed",
           error: "Excel engine did not return job_id.",
         });
       }
+
+      log.info("Model build started", { requestId, job_id: payload.job_id });
 
       return buildToolResponse({
         status: "started",
@@ -381,6 +435,7 @@ function createIndAcqServer() {
       try {
         response = await fetch(`${EXCEL_ENGINE_BASE_URL}/v1/jobs/${jobId}`);
       } catch (error) {
+        log.error("Failed to reach Excel engine", { job_id: jobId, error: String(error) });
         return buildToolResponse({
           status: "failed",
           job_id: jobId,
@@ -389,6 +444,7 @@ function createIndAcqServer() {
       }
       if (!response.ok) {
         const body = await safeReadBody(response);
+        log.error("Excel engine error", { job_id: jobId, status: response.status });
         return buildToolResponse({
           status: "failed",
           job_id: jobId,
@@ -399,11 +455,18 @@ function createIndAcqServer() {
       const payload = await response.json();
       const status = payload?.status;
 
+      log.info("Job status retrieved", { job_id: jobId, status });
+
       if (status === "pending" || status === "running") {
         return buildToolResponse({ status, job_id: jobId });
       }
 
       if (status === "complete") {
+        // Log completion with redacted download_url
+        log.info("Job complete", {
+          job_id: jobId,
+          download_url: payload.download_url ? "[URL_PRESENT]" : null,
+        });
         return buildToolResponse({
           status,
           job_id: jobId,
@@ -415,6 +478,7 @@ function createIndAcqServer() {
       }
 
       if (status === "failed") {
+        log.error("Job failed", { job_id: jobId, error: payload.error });
         return buildToolResponse({
           status,
           job_id: jobId,
@@ -601,6 +665,7 @@ interface ExtractionOutput {
   missing_fields?: { path: string; description: string }[];
   suggested_defaults?: Record<string, unknown>;
   error?: string;
+  tokenUsage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }
 
 async function extractInputsFromNL(description: string): Promise<ExtractionOutput> {
@@ -615,9 +680,16 @@ async function extractInputsFromNL(description: string): Promise<ExtractionOutpu
       temperature: 0.1,
     });
 
+    // Capture token usage (without logging prompt content)
+    const tokenUsage = response.usage ? {
+      prompt_tokens: response.usage.prompt_tokens,
+      completion_tokens: response.usage.completion_tokens,
+      total_tokens: response.usage.total_tokens,
+    } : undefined;
+
     const content = response.choices[0]?.message?.content;
     if (!content) {
-      return { status: "error", error: "No response from OpenAI" };
+      return { status: "error", error: "No response from OpenAI", tokenUsage };
     }
 
     const parsed = JSON.parse(content) as {
@@ -650,8 +722,10 @@ async function extractInputsFromNL(description: string): Promise<ExtractionOutpu
       inputs: inputsWithDefaults,
       missing_fields: uniqueMissing,
       suggested_defaults: parsed.suggested_defaults ?? {},
+      tokenUsage,
     };
   } catch (error) {
+    log.error("NL extraction failed", { error: String(error) });
     return { status: "error", error: String(error) };
   }
 }
