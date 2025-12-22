@@ -13,6 +13,8 @@ interface Props {
   extractionResult: ExtractionResult | null;
   isLoading: boolean;
   isExtracting: boolean;
+  nlText?: string;
+  onNlTextChange?: (text: string) => void;
 }
 
 export function InputsView({
@@ -25,10 +27,16 @@ export function InputsView({
   extractionResult,
   isLoading,
   isExtracting,
+  nlText,
+  onNlTextChange,
 }: Props) {
   const [expandedSection, setExpandedSection] = useState<string | null>("deal");
-  const [dealDescription, setDealDescription] = useState("");
+  const [localDealDescription, setLocalDealDescription] = useState("");
   const [extractedFields, setExtractedFields] = useState<Set<string>>(new Set());
+
+  // Use controlled prop if provided, otherwise local state
+  const dealDescription = nlText !== undefined ? nlText : localDealDescription;
+  const setDealDescription = onNlTextChange || setLocalDealDescription;
 
   const handleExtract = async () => {
     if (!dealDescription.trim()) return;
