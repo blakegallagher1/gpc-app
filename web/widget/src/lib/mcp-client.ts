@@ -1,8 +1,18 @@
-import type { IndAcqInputs, ValidationResult, BuildResult, JobStatus } from "./types";
+import type { IndAcqInputs, ValidationResult, BuildResult, JobStatus, ExtractionResult } from "./types";
 
 const MCP_URL = process.env.NEXT_PUBLIC_MCP_URL || "http://localhost:8000/mcp";
 const POLL_INTERVAL_MS = 1000;
 const MAX_POLL_TIME_MS = 120000;
+
+// OpenAI Apps SDK window.openai interface
+interface OpenAIBridge {
+  callTool: (name: string, args: Record<string, unknown>) => Promise<{ structuredContent: unknown }>;
+  openExternal?: (url: string) => void;
+}
+
+interface WindowWithOpenAI extends Window {
+  openai?: OpenAIBridge;
+}
 
 interface JsonRpcResponse<T> {
   jsonrpc: "2.0";
@@ -19,7 +29,26 @@ interface JsonRpcResponse<T> {
 
 let requestId = 0;
 
-async function callTool<T>(name: string, args: Record<string, unknown>): Promise<T> {
+/**
+ * Check if running inside ChatGPT with Apps SDK available
+ */
+function hasOpenAIBridge(): boolean {
+  return typeof window !== "undefined" && !!(window as WindowWithOpenAI).openai?.callTool;
+}
+
+/**
+ * Call tool via OpenAI Apps SDK bridge
+ */
+async function callToolViaOpenAI<T>(name: string, args: Record<string, unknown>): Promise<T> {
+  const openai = (window as WindowWithOpenAI).openai!;
+  const result = await openai.callTool(name, args);
+  return result.structuredContent as T;
+}
+
+/**
+ * Call tool via direct MCP HTTP request (for local dev)
+ */
+async function callToolViaFetch<T>(name: string, args: Record<string, unknown>): Promise<T> {
   const response = await fetch(MCP_URL, {
     method: "POST",
     headers: {
@@ -54,6 +83,16 @@ async function callTool<T>(name: string, args: Record<string, unknown>): Promise
   return data.result.structuredContent;
 }
 
+/**
+ * Call MCP tool - uses OpenAI bridge if available, otherwise direct HTTP
+ */
+async function callTool<T>(name: string, args: Record<string, unknown>): Promise<T> {
+  if (hasOpenAIBridge()) {
+    return callToolViaOpenAI<T>(name, args);
+  }
+  return callToolViaFetch<T>(name, args);
+}
+
 export async function validateInputs(inputs: IndAcqInputs): Promise<ValidationResult> {
   return callTool<ValidationResult>("ind_acq.validate_inputs", { inputs });
 }
@@ -84,4 +123,8 @@ export async function pollUntilComplete(
   }
 
   throw new Error(`Job timed out after ${MAX_POLL_TIME_MS / 1000} seconds`);
+}
+
+export async function extractFromNL(description: string): Promise<ExtractionResult> {
+  return callTool<ExtractionResult>("ind_acq.extract_from_nl", { description });
 }

@@ -1,0 +1,10 @@
+{
+  "name": "Incomplete Deal Description",
+  "description": "Minimal info that should trigger needs_info response",
+  "prompt": "I'm looking at a warehouse in Phoenix. About 25,000 square feet.",
+  "expected_status": "needs_info",
+  "expected_missing_fields": [
+    "acquisition.purchase_price",
+    "rent_roll.tenants_in_place"
+  ]
+}

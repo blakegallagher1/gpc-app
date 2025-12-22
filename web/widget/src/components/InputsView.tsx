@@ -1,15 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import type { IndAcqInputs, Tenant, ValidationResult } from "@/lib/types";
+import type { IndAcqInputs, Tenant, ValidationResult, ExtractionResult, MissingField } from "@/lib/types";
 
 interface Props {
   inputs: IndAcqInputs;
   onInputsChange: (inputs: IndAcqInputs) => void;
   onValidate: () => Promise<void>;
   onRunUnderwrite: () => Promise<void>;
+  onExtractFromNL: (description: string) => Promise<ExtractionResult>;
   validationResult: ValidationResult | null;
+  extractionResult: ExtractionResult | null;
   isLoading: boolean;
+  isExtracting: boolean;
 }
 
 export function InputsView({
@@ -17,10 +20,48 @@ export function InputsView({
   onInputsChange,
   onValidate,
   onRunUnderwrite,
+  onExtractFromNL,
   validationResult,
+  extractionResult,
   isLoading,
+  isExtracting,
 }: Props) {
   const [expandedSection, setExpandedSection] = useState<string | null>("deal");
+  const [dealDescription, setDealDescription] = useState("");
+  const [extractedFields, setExtractedFields] = useState<Set<string>>(new Set());
+
+  const handleExtract = async () => {
+    if (!dealDescription.trim()) return;
+
+    const result = await onExtractFromNL(dealDescription);
+    if (result.status === "extracted" && result.inputs) {
+      // Track which fields were extracted
+      const fieldsSet = new Set<string>();
+      collectFieldPaths(result.inputs, "", fieldsSet);
+      setExtractedFields(fieldsSet);
+    }
+  };
+
+  // Helper to collect all field paths from extracted inputs
+  const collectFieldPaths = (obj: unknown, prefix: string, paths: Set<string>) => {
+    if (obj === null || obj === undefined) return;
+    if (typeof obj !== "object") {
+      paths.add(prefix);
+      return;
+    }
+    if (Array.isArray(obj)) {
+      obj.forEach((item, idx) => collectFieldPaths(item, `${prefix}[${idx}]`, paths));
+      return;
+    }
+    for (const [key, value] of Object.entries(obj)) {
+      const newPath = prefix ? `${prefix}.${key}` : key;
+      if (value !== null && value !== undefined) {
+        collectFieldPaths(value, newPath, paths);
+      }
+    }
+  };
+
+  const isFieldExtracted = (path: string) => extractedFields.has(path);
 
   const updateField = (path: string, value: unknown) => {
     const parts = path.split(".");
@@ -91,6 +132,64 @@ export function InputsView({
       {validationResult && validationResult.status === "ok" && (
         <div className="validation-success">Inputs validated successfully</div>
       )}
+
+      {/* NL Intake Section */}
+      <section className="input-section nl-intake-section">
+        <h3 onClick={() => toggleSection("nl-intake")} className="section-header">
+          Describe Your Deal (AI Extraction) {expandedSection === "nl-intake" ? "▼" : "▶"}
+        </h3>
+        {expandedSection === "nl-intake" && (
+          <div className="section-content">
+            <div className="nl-intake-description">
+              Describe your deal in plain English and we&apos;ll extract the inputs for you.
+            </div>
+            <textarea
+              className="nl-textarea"
+              placeholder="Example: Build me an acquisition model for a 50,000 SF industrial building in Houston, TX. Purchase price is $5M, 65% LTV, 5.75% interest rate. Single tenant paying $9.50 PSF NNN with 3% annual bumps, lease expires in 2030. Plan to hold for 5 years and exit at a 6.5% cap rate."
+              value={dealDescription}
+              onChange={(e) => setDealDescription(e.target.value)}
+              rows={5}
+            />
+            <button
+              type="button"
+              className="btn btn-extract"
+              onClick={handleExtract}
+              disabled={isExtracting || !dealDescription.trim()}
+            >
+              {isExtracting ? "Extracting..." : "Extract Inputs"}
+            </button>
+
+            {extractionResult && extractionResult.status === "needs_info" && (
+              <div className="extraction-needs-info">
+                <h4>Additional Information Needed:</h4>
+                <p>{extractionResult.follow_up_question}</p>
+                {extractionResult.missing_fields && extractionResult.missing_fields.length > 0 && (
+                  <ul className="missing-fields-list">
+                    {extractionResult.missing_fields.map((field, i) => (
+                      <li key={i}>
+                        <strong>{field.path}:</strong> {field.description}
+                        {field.example && <span className="field-example"> (e.g., {field.example})</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {extractionResult && extractionResult.status === "error" && (
+              <div className="extraction-error">
+                <strong>Extraction failed:</strong> {extractionResult.error}
+              </div>
+            )}
+
+            {extractionResult && extractionResult.status === "extracted" && (
+              <div className="extraction-success">
+                Inputs extracted successfully! Review and edit below, then run underwrite.
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* Deal Section */}
       <section className="input-section">

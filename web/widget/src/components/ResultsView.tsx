@@ -98,7 +98,13 @@ export function ResultsView({ runState, onRunAgain }: Props) {
       {/* Results */}
       {runState.phase === "complete" && (
         <>
-          {/* Check Summary */}
+          {/* Deal Type & Check Summary */}
+          <div className="deal-type-row">
+            <div className="deal-type-label">
+              Template: {String(runState.outputs["out.template_id"] || "IND_ACQ")} v{String(runState.outputs["out.template_version"] || "1.0.0")}
+            </div>
+          </div>
+
           <div className="check-summary">
             <div
               className={`check-status ${
@@ -129,17 +135,24 @@ export function ResultsView({ runState, onRunAgain }: Props) {
           </div>
 
           {/* Download Button */}
-          {(runState.download_url || runState.file_path) && (
+          {runState.download_url && (
             <div className="download-section">
-              <a
-                href={runState.download_url ?? `http://localhost:5001/v1/download?path=${encodeURIComponent(runState.file_path ?? "")}`}
+              <button
+                type="button"
                 className="btn btn-download"
-                download="IND_ACQ.xlsx"
-                target="_blank"
-                rel="noopener noreferrer"
+                onClick={() => {
+                  const url = runState.download_url;
+                  if (!url) return;
+                  // Use OpenAI Apps SDK openExternal if available, fallback to window.open
+                  if (typeof window !== "undefined" && (window as unknown as { openai?: { openExternal?: (url: string) => void } }).openai?.openExternal) {
+                    (window as unknown as { openai: { openExternal: (url: string) => void } }).openai.openExternal(url);
+                  } else {
+                    window.open(url, "_blank", "noopener,noreferrer");
+                  }
+                }}
               >
                 Download Excel
-              </a>
+              </button>
               {runState.download_url_expiry && (
                 <div className="download-expiry">
                   <small>Link expires: {new Date(runState.download_url_expiry).toLocaleString()}</small>

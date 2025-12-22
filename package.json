@@ -2,12 +2,18 @@
   "name": "gpc-app",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "CRE Underwriting Platform - IND_ACQ",
   "scripts": {
     "dev:mcp": "pnpm --filter @gpc/mcp-server dev",
     "dev:widget": "pnpm --filter @gpc/widget dev",
     "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "validate:schema": "node scripts/validate-schema.mjs",
+    "ci": "pnpm validate:schema && pnpm typecheck && pnpm build"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "ajv": "^8.12.0",
+    "ajv-formats": "^2.1.1"
+  }
 }

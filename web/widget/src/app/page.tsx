@@ -4,8 +4,8 @@ import { useState } from "react";
 import { InputsView } from "@/components/InputsView";
 import { ResultsView } from "@/components/ResultsView";
 import { defaultInputs } from "@/lib/default-inputs";
-import { validateInputs, buildModel, pollUntilComplete } from "@/lib/mcp-client";
-import type { IndAcqInputs, ValidationResult, RunState } from "@/lib/types";
+import { validateInputs, buildModel, pollUntilComplete, extractFromNL } from "@/lib/mcp-client";
+import type { IndAcqInputs, ValidationResult, RunState, ExtractionResult } from "@/lib/types";
 
 type View = "inputs" | "results";
 
@@ -15,6 +15,8 @@ export default function IndAcqWidget() {
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [runState, setRunState] = useState<RunState>({ phase: "idle" });
   const [isLoading, setIsLoading] = useState(false);
+  const [extractionResult, setExtractionResult] = useState<ExtractionResult | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
 
   const handleValidate = async () => {
     setIsLoading(true);
@@ -104,6 +106,56 @@ export default function IndAcqWidget() {
     setCurrentView("inputs");
   };
 
+  const handleExtractFromNL = async (description: string): Promise<ExtractionResult> => {
+    setIsExtracting(true);
+    setExtractionResult(null);
+
+    try {
+      const result = await extractFromNL(description);
+      setExtractionResult(result);
+
+      // If extraction succeeded, merge inputs with defaults
+      if (result.status === "extracted" && result.inputs) {
+        setInputs(mergeInputs(defaultInputs, result.inputs));
+      }
+
+      return result;
+    } catch (error) {
+      const errorResult: ExtractionResult = {
+        status: "error",
+        error: String(error),
+      };
+      setExtractionResult(errorResult);
+      return errorResult;
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  // Deep merge extracted inputs over defaults
+  const mergeInputs = (base: IndAcqInputs, partial: Partial<IndAcqInputs>): IndAcqInputs => {
+    const result = JSON.parse(JSON.stringify(base)) as IndAcqInputs;
+
+    const merge = (target: Record<string, unknown>, source: Record<string, unknown>) => {
+      for (const key of Object.keys(source)) {
+        const sourceVal = source[key];
+        if (sourceVal === null || sourceVal === undefined) continue;
+
+        if (typeof sourceVal === "object" && !Array.isArray(sourceVal)) {
+          if (!target[key] || typeof target[key] !== "object") {
+            target[key] = {};
+          }
+          merge(target[key] as Record<string, unknown>, sourceVal as Record<string, unknown>);
+        } else {
+          target[key] = sourceVal;
+        }
+      }
+    };
+
+    merge(result as unknown as Record<string, unknown>, partial as unknown as Record<string, unknown>);
+    return result;
+  };
+
   return (
     <main>
       {currentView === "inputs" && (
@@ -112,8 +164,11 @@ export default function IndAcqWidget() {
           onInputsChange={setInputs}
           onValidate={handleValidate}
           onRunUnderwrite={handleRunUnderwrite}
+          onExtractFromNL={handleExtractFromNL}
           validationResult={validationResult}
+          extractionResult={extractionResult}
           isLoading={isLoading}
+          isExtracting={isExtracting}
         />
       )}
 

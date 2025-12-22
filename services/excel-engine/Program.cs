@@ -88,11 +88,34 @@ else if (!string.IsNullOrEmpty(b2Bucket) || !string.IsNullOrEmpty(b2KeyId))
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5001";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
+// Ops hardening settings
+var debugEnabled = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DEBUG"));
+var maxConcurrentJobs = int.TryParse(Environment.GetEnvironmentVariable("MAX_CONCURRENT_JOBS")?.Trim(), out var mcj) ? mcj : 10;
+var jobSemaphore = new SemaphoreSlim(maxConcurrentJobs, maxConcurrentJobs);
+
 var app = builder.Build();
 
 ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
 var jobs = new ConcurrentDictionary<string, JobState>();
+
+// Template registry: template_id -> { version -> filename }
+var templateRegistry = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
+{
+    ["IND_ACQ"] = new Dictionary<string, string>
+    {
+        ["1.0.0"] = "IND_ACQ_v1.0.0_goldmaster.xlsx"
+    },
+    ["IND_ACQ_MT"] = new Dictionary<string, string>
+    {
+        ["1.0.0"] = "IND_ACQ_MT_v1.0.0_goldmaster.xlsx"
+    }
+};
+
+// Default template IDs
+const string TEMPLATE_SINGLE_TENANT = "IND_ACQ";
+const string TEMPLATE_MULTI_TENANT = "IND_ACQ_MT";
+const int MULTI_TENANT_THRESHOLD = 2; // 2+ tenants = multi-tenant template
 
 app.MapGet("/health", () => Results.Ok(new { ok = true }));
 
@@ -104,9 +127,14 @@ app.MapGet("/version", () => Results.Ok(new
     b2_enabled = b2Client != null
 }));
 
-// Debug endpoint to test B2 connectivity
+// Debug endpoint to test B2 connectivity (only available when DEBUG=1)
 app.MapGet("/debug/b2", async () =>
 {
+    if (!debugEnabled)
+    {
+        return Results.NotFound(new { error = "not_found", message = "Debug endpoint not available" });
+    }
+
     if (b2Client == null)
     {
         return Results.BadRequest(new { error = "b2_not_configured", message = "B2 client is not configured" });
@@ -214,6 +242,9 @@ app.MapGet("/v1/download", (HttpContext context) =>
 app.MapPost("/v1/ind-acq/build", async (HttpRequest request) =>
 {
     BuildRequest buildRequest;
+    string? templateIdFromContract = null;
+    string? templateVersionTarget = null;
+    int tenantCount = 0;
 
     try
     {
@@ -235,6 +266,28 @@ app.MapPost("/v1/ind-acq/build", async (HttpRequest request) =>
         if (!root.TryGetProperty("mapping", out var mapping) || mapping.ValueKind != JsonValueKind.Object)
         {
             return Results.BadRequest(new { error = "schema_violation", message = "mapping must be an object." });
+        }
+
+        // Extract template_id and template_version_target from inputs.contract
+        if (inputs.TryGetProperty("contract", out var contract) && contract.ValueKind == JsonValueKind.Object)
+        {
+            if (contract.TryGetProperty("template_id", out var templateIdElement) && templateIdElement.ValueKind == JsonValueKind.String)
+            {
+                templateIdFromContract = templateIdElement.GetString();
+            }
+            if (contract.TryGetProperty("template_version_target", out var versionElement) && versionElement.ValueKind == JsonValueKind.String)
+            {
+                templateVersionTarget = versionElement.GetString();
+            }
+        }
+
+        // Count tenants for auto-selection
+        if (inputs.TryGetProperty("rent_roll", out var rentRoll) && rentRoll.ValueKind == JsonValueKind.Object)
+        {
+            if (rentRoll.TryGetProperty("tenants_in_place", out var tenants) && tenants.ValueKind == JsonValueKind.Array)
+            {
+                tenantCount = tenants.GetArrayLength();
+            }
         }
 
         string? templatePath = null;
@@ -259,11 +312,73 @@ app.MapPost("/v1/ind-acq/build", async (HttpRequest request) =>
         return Results.BadRequest(new { error = "schema_violation", message = $"Unable to parse request: {ex.Message}" });
     }
 
+    // Select template: explicit template_id > auto-select based on tenant count
+    var selectedTemplateId = templateIdFromContract;
+    if (string.IsNullOrEmpty(selectedTemplateId))
+    {
+        selectedTemplateId = tenantCount >= MULTI_TENANT_THRESHOLD ? TEMPLATE_MULTI_TENANT : TEMPLATE_SINGLE_TENANT;
+        LogStructured("INFO", "Auto-selected template", new { tenantCount, templateId = selectedTemplateId });
+    }
+
+    // Validate template_id exists
+    if (!templateRegistry.TryGetValue(selectedTemplateId, out var templateVersions))
+    {
+        return Results.BadRequest(new
+        {
+            error = "template_not_found",
+            message = $"Template '{selectedTemplateId}' not found. Available: {string.Join(", ", templateRegistry.Keys)}"
+        });
+    }
+
+    // Validate template version if specified
+    var effectiveVersion = templateVersionTarget ?? "1.0.0"; // Default to 1.0.0
+    if (!templateVersions.ContainsKey(effectiveVersion))
+    {
+        return Results.BadRequest(new
+        {
+            error = "template_version_mismatch",
+            message = $"Template version '{effectiveVersion}' not available for {selectedTemplateId}. Available: {string.Join(", ", templateVersions.Keys)}"
+        });
+    }
+
+    // Resolve template path
+    var selectedTemplateFilename = templateVersions[effectiveVersion];
+    var resolvedTemplatePath = buildRequest.TemplatePath ?? ResolveTemplatePath(selectedTemplateFilename);
+    buildRequest = buildRequest with { TemplatePath = resolvedTemplatePath };
+
+    LogStructured("INFO", "Template selected", new
+    {
+        templateId = selectedTemplateId,
+        version = effectiveVersion,
+        tenantCount,
+        templatePath = resolvedTemplatePath
+    });
+
+    // Check concurrency limit
+    if (!await jobSemaphore.WaitAsync(0))
+    {
+        return Results.StatusCode(503, new
+        {
+            error = "server_busy",
+            message = $"Maximum concurrent jobs ({maxConcurrentJobs}) reached. Please try again later."
+        });
+    }
+
     var jobId = Guid.NewGuid().ToString("N");
     var job = new JobState { Status = JobStatus.Pending };
     jobs[jobId] = job;
 
-    _ = Task.Run(() => RunJobAsync(jobId, job, buildRequest, b2Client));
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            await RunJobAsync(jobId, job, buildRequest, b2Client);
+        }
+        finally
+        {
+            jobSemaphore.Release();
+        }
+    });
 
     return Results.Ok(new { job_id = jobId });
 });
@@ -442,6 +557,21 @@ static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, 
                     });
                     job.DownloadUrl = uploadResult.DownloadUrl;
                     job.DownloadUrlExpiry = uploadResult.ExpiresAt ?? DateTime.UtcNow.AddHours(1);
+
+                    // Clean up temp file after successful B2 upload
+                    try
+                    {
+                        var tempDir = Path.GetDirectoryName(outputPath);
+                        if (tempDir != null && Directory.Exists(tempDir))
+                        {
+                            Directory.Delete(tempDir, recursive: true);
+                            LogStructured("INFO", "Temp files cleaned up", new { jobId, path = tempDir });
+                        }
+                    }
+                    catch (Exception cleanupEx)
+                    {
+                        LogStructured("WARN", "Temp file cleanup failed", new { jobId, error = cleanupEx.Message });
+                    }
                 }
                 else
                 {
@@ -463,13 +593,12 @@ static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, 
     }
 }
 
-static string ResolveTemplatePath(string? templatePath)
+static string ResolveTemplatePath(string templateFilename)
 {
-    if (!string.IsNullOrWhiteSpace(templatePath))
+    // If it's already a full path, use it directly
+    if (Path.IsPathRooted(templateFilename) && File.Exists(templateFilename))
     {
-        return Path.IsPathRooted(templatePath)
-            ? templatePath
-            : Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), templatePath));
+        return templateFilename;
     }
 
     // Check multiple locations for templates:
@@ -477,8 +606,8 @@ static string ResolveTemplatePath(string? templatePath)
     // 2. ../../templates (local development from services/excel-engine)
     var candidates = new[]
     {
-        Path.Combine(Directory.GetCurrentDirectory(), "templates", "IND_ACQ_v1.0.0_goldmaster.xlsx"),
-        Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "templates", "IND_ACQ_v1.0.0_goldmaster.xlsx"),
+        Path.Combine(Directory.GetCurrentDirectory(), "templates", templateFilename),
+        Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "templates", templateFilename),
     };
 
     foreach (var candidate in candidates)
@@ -491,7 +620,7 @@ static string ResolveTemplatePath(string? templatePath)
     }
 
     // Default to Docker path (will fail with clear error if missing)
-    return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "templates", "IND_ACQ_v1.0.0_goldmaster.xlsx"));
+    return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "templates", templateFilename));
 }
 
 static string BuildOutputPath(string jobId)

@@ -47,18 +47,17 @@ export interface IndAcqInputs {
     expenses: {
       management_fee_pct_egi: number;
       fixed_annual: {
-        insurance: number;
-        utilities: number;
-        repairs_maintenance: number;
-        security: number;
-        g_and_a: number;
-        cleaning_janitorial: number;
-        non_recoverable_opex: number;
+        insurance?: number;
+        utilities?: number;
+        repairs_maintenance?: number;
+        security?: number;
+        property_taxes?: number;
+        other_expense_1?: number;
       };
       recoveries: {
         mode: string;
       };
-      capex_reserves_per_nsf_annual: number;
+      capex_reserves_per_nsf_annual?: number;
     };
   };
   rent_roll: {
@@ -114,3 +113,17 @@ export type RunState =
   | { phase: "polling"; job_id: string }
   | { phase: "complete"; job_id: string; outputs: Record<string, unknown>; file_path: string | null; download_url: string | null; download_url_expiry: string | null }
   | { phase: "failed"; error: string };
+
+export interface MissingField {
+  path: string;
+  description: string;
+  example?: string;
+}
+
+export interface ExtractionResult {
+  status: "extracted" | "needs_info" | "error";
+  inputs?: Partial<IndAcqInputs>;
+  missing_fields?: MissingField[];
+  follow_up_question?: string;
+  error?: string;
+}

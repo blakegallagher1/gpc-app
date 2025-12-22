@@ -1,6 +1,28 @@
-import type { IndAcqInputs } from "./types";
+#!/usr/bin/env node
+/**
+ * CI Schema Validation Script
+ * Validates that widget default-inputs.ts matches contracts/ind_acq_v1.input.schema.json
+ *
+ * Usage: node scripts/validate-schema.mjs
+ */
 
-export const defaultInputs: IndAcqInputs = {
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import Ajv2020 from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const rootDir = join(__dirname, '..');
+
+// Load the schema
+const schemaPath = join(rootDir, 'contracts', 'ind_acq_v1.input.schema.json');
+const schema = JSON.parse(readFileSync(schemaPath, 'utf-8'));
+
+// The default inputs from TypeScript (converted to JSON for validation)
+// This mirrors web/widget/src/lib/default-inputs.ts
+const defaultInputs = {
   contract: {
     contract_version: "IND_ACQ_V1",
     template_id: "IND_ACQ",
@@ -86,3 +108,21 @@ export const defaultInputs: IndAcqInputs = {
     forward_noi_months: 12,
   },
 };
+
+// Setup AJV validator (using 2020-12 draft)
+const ajv = new Ajv2020({ allErrors: true, strict: false });
+addFormats(ajv);
+
+const validate = ajv.compile(schema);
+const valid = validate(defaultInputs);
+
+if (valid) {
+  console.log('✓ Default inputs validate against schema');
+  process.exit(0);
+} else {
+  console.error('✗ Schema validation failed:');
+  for (const err of validate.errors) {
+    console.error(`  - ${err.instancePath || '/'}: ${err.message}`);
+  }
+  process.exit(1);
+}

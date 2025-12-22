@@ -12,7 +12,7 @@
       "required": ["contract_version", "template_id"],
       "properties": {
         "contract_version": { "type": "string", "const": "IND_ACQ_V1" },
-        "template_id": { "type": "string", "const": "IND_ACQ" },
+        "template_id": { "type": "string", "enum": ["IND_ACQ", "IND_ACQ_MT"] },
         "template_version_target": {
           "type": "string",
           "description": "Optional: template semver the payload expects (e.g., 1.0.0)."

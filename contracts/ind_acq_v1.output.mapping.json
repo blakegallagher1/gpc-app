@@ -38,12 +38,7 @@
       "debt.acquisition_loan.rate.fixed_rate": "debt_acq_fixed_rate_or_spread",
 
       "exit.exit_cap_rate": "exit_cap_rate",
-      "exit.sale_cost_pct": "exit_sale_cost_pct",
-
-      "waterfall.lp_equity_pct": "wf_lp_pct",
-      "waterfall.gp_equity_pct": "wf_gp_pct",
-      "waterfall.tiers[0].hurdle_irr": "wf_h1_irr",
-      "waterfall.tiers[0].promote_pct": "wf_h1_promote"
+      "exit.sale_cost_pct": "exit_sale_cost_pct"
     },
 
     "tables": {
@@ -54,19 +49,6 @@
           "tenant_name": { "index": 1 },
           "sf": { "index": 2 },
           "current_rent_psf_annual": { "index": 4 },
-          "annual_bump_pct": { "index": 6 },
-          "lease_start": { "index": 7 },
-          "lease_end": { "index": 8 },
-          "lease_type": { "index": 9 }
-        }
-      },
-      "rent_roll_market": {
-        "table_name": "tbl_rentroll_market",
-        "source_path": "rent_roll.tenants_market",
-        "columns": {
-          "tenant_name": { "index": 1 },
-          "sf": { "index": 2 },
-          "market_rent_psf_annual": { "index": 4 },
           "annual_bump_pct": { "index": 6 },
           "lease_start": { "index": 7 },
           "lease_end": { "index": 8 },

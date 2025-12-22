@@ -4,6 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import Ajv2020Module from "ajv/dist/2020.js";
 import addFormatsModule from "ajv-formats";
+import OpenAI from "openai";
 
 // Handle ESM default export - use any to bypass type checking for these modules
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -26,6 +27,7 @@ if (process.env.WIDGET_URL && !process.env.WIDGET_PUBLIC_URL) {
 
 const validateInputsInputSchema = z.object({
   inputs: z.unknown(),
+  partial: z.boolean().optional(),
 });
 
 const buildModelInputSchema = z.object({
@@ -36,6 +38,10 @@ const getRunStatusInputSchema = z.object({
   job_id: z.string().min(1),
 });
 
+const extractFromNLInputSchema = z.object({
+  description: z.string().min(1),
+});
+
 const toolInputJsonSchemas = {
   validate_inputs: {
     type: "object",
@@ -43,6 +49,7 @@ const toolInputJsonSchemas = {
     required: ["inputs"],
     properties: {
       inputs: { type: "object" },
+      partial: { type: "boolean", description: "If true, returns missing fields instead of validation errors for incomplete inputs" },
     },
   },
   build_model: {
@@ -61,10 +68,22 @@ const toolInputJsonSchemas = {
       job_id: { type: "string", minLength: 1 },
     },
   },
+  extract_from_nl: {
+    type: "object",
+    additionalProperties: false,
+    required: ["description"],
+    properties: {
+      description: { type: "string", minLength: 1 },
+    },
+  },
 };
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 addFormats(ajv);
+
+// Initialize OpenAI client (uses OPENAI_API_KEY env var by default)
+const openai = new OpenAI();
+const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-2024-08-06";
 
 const inputSchema = await loadJson(contractsPath.inputSchema);
 const outputMapping = await loadJson(contractsPath.outputMapping);
@@ -160,12 +179,17 @@ function createIndAcqServer() {
     "ind_acq.validate_inputs",
     {
       title: "Validate IND_ACQ inputs",
-      description: "Validates inputs for the IND_ACQ underwriting model.",
+      description: "Validates inputs for the IND_ACQ underwriting model. Use partial=true to get missing fields list instead of errors.",
       inputSchema: validateInputsInputSchema,
-      _meta: { json_schema: toolInputJsonSchemas.validate_inputs },
+      _meta: {
+        json_schema: toolInputJsonSchemas.validate_inputs,
+        "openai/toolInvocation/invoking": "Validating underwriting inputs...",
+        "openai/toolInvocation/invoked": "Input validation complete",
+      },
     },
     async (args) => {
-      const result = validateInputs(args.inputs);
+      const partialMode = args.partial === true;
+      const result = validateInputs(args.inputs, partialMode);
       return buildToolResponse(result);
     }
   );
@@ -176,7 +200,12 @@ function createIndAcqServer() {
       title: "Build IND_ACQ model",
       description: "Builds the IND_ACQ underwriting model.",
       inputSchema: buildModelInputSchema,
-      _meta: { json_schema: toolInputJsonSchemas.build_model },
+      _meta: {
+        json_schema: toolInputJsonSchemas.build_model,
+        "openai/outputTemplate": "ui://widget/ind-acq",
+        "openai/toolInvocation/invoking": "Building underwriting model...",
+        "openai/toolInvocation/invoked": "Model build started",
+      },
     },
     async (args) => {
       const validation = validateInputs(args.inputs);
@@ -227,7 +256,12 @@ function createIndAcqServer() {
       title: "Get IND_ACQ run status",
       description: "Retrieves status for a build job.",
       inputSchema: getRunStatusInputSchema,
-      _meta: { json_schema: toolInputJsonSchemas.get_run_status },
+      _meta: {
+        json_schema: toolInputJsonSchemas.get_run_status,
+        "openai/outputTemplate": "ui://widget/ind-acq",
+        "openai/toolInvocation/invoking": "Checking job status...",
+        "openai/toolInvocation/invoked": "Status retrieved",
+      },
     },
     async (args) => {
       const jobId = args.job_id?.trim();
@@ -291,15 +325,73 @@ function createIndAcqServer() {
     }
   );
 
+  server.registerTool(
+    "ind_acq.extract_from_nl",
+    {
+      title: "Extract IND_ACQ inputs from natural language",
+      description: "Extracts structured IND_ACQ inputs from a natural language deal description.",
+      inputSchema: extractFromNLInputSchema,
+      _meta: {
+        json_schema: toolInputJsonSchemas.extract_from_nl,
+        "openai/toolInvocation/invoking": "Extracting deal parameters...",
+        "openai/toolInvocation/invoked": "Extraction complete",
+      },
+    },
+    async (args) => {
+      const description = args.description?.trim();
+      if (!description) {
+        return buildExtractionResponse({
+          status: "error",
+          error: "Description is required.",
+        });
+      }
+
+      try {
+        const result = await extractInputsFromNL(description);
+        return buildExtractionResponse(result);
+      } catch (error) {
+        return buildExtractionResponse({
+          status: "error",
+          error: `Extraction failed: ${String(error)}`,
+        });
+      }
+    }
+  );
+
   return server;
 }
 
-function validateInputs(inputs: unknown): ValidationResult {
+function validateInputs(inputs: unknown, partialMode = false): ValidationResult {
   if (!validateInputsContract(inputs)) {
-    const errors = (validateInputsContract.errors ?? []).map((error: { instancePath?: string; message?: string }) => ({
+    const errors = (validateInputsContract.errors ?? []).map((error: { instancePath?: string; message?: string; keyword?: string }) => ({
       path: error.instancePath || "/",
       message: error.message ?? "Invalid value.",
+      keyword: error.keyword,
     }));
+
+    // In partial mode, convert "required" errors to missing fields
+    if (partialMode) {
+      type ErrorEntry = { path: string; message: string; keyword?: string };
+      const missingFields = errors
+        .filter((e: ErrorEntry) => e.keyword === "required")
+        .map((e: ErrorEntry) => ({
+          path: e.path === "/" ? e.message?.match(/"([^"]+)"/)?.[1] || e.path : e.path,
+          description: e.message ?? "Required field",
+        }));
+
+      const otherErrors = errors.filter((e: ErrorEntry) => e.keyword !== "required");
+
+      if (otherErrors.length === 0) {
+        return {
+          status: "needs_info",
+          missing_fields: missingFields,
+        };
+      }
+
+      // If there are non-required errors, still return invalid
+      return { status: "invalid", errors: otherErrors };
+    }
+
     return { status: "invalid", errors };
   }
 
@@ -333,9 +425,135 @@ async function safeReadBody(response: Response) {
   }
 }
 
+// System prompt for NL extraction
+const EXTRACTION_SYSTEM_PROMPT = `You are an expert commercial real estate analyst. Extract structured underwriting inputs from a natural language deal description.
+
+Output a JSON object with the following structure (only include fields mentioned in the description):
+{
+  "deal": {
+    "project_name": string,
+    "city": string,
+    "state": string (2-letter code),
+    "analysis_start_date": string (YYYY-MM-DD),
+    "hold_period_months": number,
+    "gross_sf": number,
+    "net_sf": number
+  },
+  "acquisition": {
+    "purchase_price": number
+  },
+  "operating": {
+    "vacancy_pct": number (decimal, e.g., 0.05 for 5%),
+    "expenses": {
+      "management_fee_pct_egi": number (decimal)
+    }
+  },
+  "rent_roll": {
+    "tenants_in_place": [
+      {
+        "tenant_name": string,
+        "sf": number,
+        "lease_start": string (YYYY-MM-DD),
+        "lease_end": string (YYYY-MM-DD),
+        "current_rent_psf_annual": number,
+        "annual_bump_pct": number (decimal, e.g., 0.03 for 3%),
+        "lease_type": "NNN" | "GROSS" | "MODIFIED_GROSS"
+      }
+    ]
+  },
+  "debt": {
+    "acquisition_loan": {
+      "ltv_max": number (decimal, e.g., 0.65 for 65%),
+      "rate": {
+        "fixed_rate": number (decimal, e.g., 0.0575 for 5.75%)
+      },
+      "amort_years": number,
+      "io_months": number,
+      "term_months": number
+    }
+  },
+  "exit": {
+    "exit_month": number,
+    "exit_cap_rate": number (decimal, e.g., 0.065 for 6.5%)
+  }
+}
+
+Important rules:
+1. Only include fields that are explicitly mentioned or can be reasonably inferred
+2. Convert percentages to decimals (5% -> 0.05)
+3. Convert years to months where appropriate (5 year hold -> 60 months)
+4. Use reasonable defaults for common CRE assumptions when implied
+5. If critical information is missing, still extract what you can
+
+Also return a "missing_fields" array listing important fields that were NOT provided:
+[
+  { "path": "deal.purchase_price", "description": "Purchase price", "example": "$5,000,000" }
+]`;
+
+interface ExtractionResult {
+  [key: string]: unknown;
+  status: "extracted" | "needs_info" | "error";
+  inputs?: Record<string, unknown>;
+  missing_fields?: { path: string; description: string; example?: string }[];
+  follow_up_question?: string;
+  error?: string;
+}
+
+async function extractInputsFromNL(description: string): Promise<ExtractionResult> {
+  const response = await openai.chat.completions.create({
+    model: OPENAI_MODEL,
+    messages: [
+      { role: "system", content: EXTRACTION_SYSTEM_PROMPT },
+      { role: "user", content: description },
+    ],
+    response_format: { type: "json_object" },
+    temperature: 0.1,
+  });
+
+  const content = response.choices[0]?.message?.content;
+  if (!content) {
+    return { status: "error", error: "No response from OpenAI" };
+  }
+
+  const parsed = JSON.parse(content) as {
+    inputs: Record<string, unknown>;
+    missing_fields: { path: string; description: string; example?: string }[];
+  };
+
+  // Check for critical missing fields
+  const criticalMissing = parsed.missing_fields?.filter((f) =>
+    ["acquisition.purchase_price", "deal.net_sf", "rent_roll.tenants_in_place"].some((p) =>
+      f.path.startsWith(p)
+    )
+  );
+
+  if (criticalMissing && criticalMissing.length > 0) {
+    return {
+      status: "needs_info",
+      inputs: parsed.inputs,
+      missing_fields: parsed.missing_fields,
+      follow_up_question: `Please provide: ${criticalMissing.map((f) => f.description).join(", ")}`,
+    };
+  }
+
+  return {
+    status: "extracted",
+    inputs: parsed.inputs,
+    missing_fields: parsed.missing_fields,
+  };
+}
+
+function buildExtractionResponse(result: ExtractionResult) {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(result) }],
+    structuredContent: result,
+  };
+}
+
 type ValidationResult =
   | { status: "ok" }
-  | { status: "invalid"; errors: { path: string; message: string }[] };
+  | { status: "invalid"; errors: { path: string; message: string }[] }
+  | { status: "needs_info"; missing_fields: { path: string; description: string }[] };
 
 type ToolResult =
   | ValidationResult
