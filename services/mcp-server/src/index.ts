@@ -68,11 +68,9 @@ const validateInputsInputSchema = z.object({
   inputs: z.record(z.unknown()),
 });
 
-const buildModelInputSchema = z.object({
-  inputs: z.record(z.unknown()).optional(),
-  natural_language: z.string().optional(),
-  mode: z.enum(["extract_only", "run"]).optional(),
-}).passthrough();
+// Use a permissive schema - MCP SDK's Zod conversion drops optional fields
+// We validate manually in the handler
+const buildModelInputSchema = z.object({}).passthrough();
 
 const getRunStatusInputSchema = z.object({
   job_id: z.string().min(1),
