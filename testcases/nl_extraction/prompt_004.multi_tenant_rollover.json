@@ -1,0 +1,30 @@
+{
+  "name": "Multi-Tenant Industrial with Rollover",
+  "description": "Multi-tenant deal with explicit renewal/rollover assumptions",
+  "prompt": "Looking at a 120,000 SF industrial park called Metro Flex Center in Dallas, TX. Purchase price is $14M. Three tenants: Acme Logistics has 60,000 SF at $9.50 PSF NNN expiring March 2027, Beta Supply has 35,000 SF at $10.25 PSF expiring Dec 2028, and Gamma Corp has 25,000 SF at $11 PSF expiring June 2029. All have 3% annual bumps. For Acme Logistics, assume they renew at $12 PSF with 2 months downtime and 1 month free rent. Financing is 60% LTV at 5.75% interest, 7 year hold, exit at 6.75% cap.",
+  "expected_status": "ok",
+  "expected_extracted_fields": [
+    "deal.project_name",
+    "deal.city",
+    "deal.state",
+    "deal.net_sf",
+    "acquisition.purchase_price",
+    "rent_roll.tenants_in_place",
+    "rent_roll.market_rollover",
+    "debt.acquisition_loan.ltv_max",
+    "debt.acquisition_loan.rate.fixed_rate",
+    "exit.exit_cap_rate"
+  ],
+  "expected_values": {
+    "deal.project_name": "Metro Flex Center",
+    "deal.city": "Dallas",
+    "deal.state": "TX",
+    "deal.net_sf": 120000,
+    "acquisition.purchase_price": 14000000,
+    "debt.acquisition_loan.ltv_max": 0.60,
+    "debt.acquisition_loan.rate.fixed_rate": 0.0575,
+    "exit.exit_cap_rate": 0.0675
+  },
+  "expected_tenant_count": 3,
+  "expected_rollover_count": 1
+}

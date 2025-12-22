@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { IndAcqInputs, Tenant, ValidationResult, ExtractionResult, MissingField } from "@/lib/types";
+import type { IndAcqInputs, Tenant, MarketRollover, ValidationResult, ExtractionResult, MissingField } from "@/lib/types";
 
 interface Props {
   inputs: IndAcqInputs;
@@ -104,6 +104,38 @@ export function InputsView({
     );
     updateField("rent_roll.tenants_in_place", newTenants);
   };
+
+  // Market rollover management
+  const marketRollovers = inputs.rent_roll.market_rollover ?? [];
+
+  const updateRollover = (index: number, field: keyof MarketRollover, value: unknown) => {
+    const newRollovers = [...marketRollovers];
+    newRollovers[index] = { ...newRollovers[index], [field]: value };
+    updateField("rent_roll.market_rollover", newRollovers);
+  };
+
+  const addRollover = () => {
+    const newRollover: MarketRollover = {
+      tenant_name: "Rollover Tenant",
+      market_rent_psf_annual: 12,
+      annual_bump_pct: 0.03,
+      lease_start: "2028-01-01",
+      lease_end: "2033-12-31",
+      lease_type: "NNN",
+      downtime_months: 2,
+      free_rent_months: 0,
+    };
+    updateField("rent_roll.market_rollover", [...marketRollovers, newRollover]);
+  };
+
+  const removeRollover = (index: number) => {
+    const newRollovers = marketRollovers.filter((_, i) => i !== index);
+    updateField("rent_roll.market_rollover", newRollovers);
+  };
+
+  // Determine template selection based on tenant count
+  const tenantCount = inputs.rent_roll.tenants_in_place.length;
+  const autoTemplateId = tenantCount >= 2 ? "IND_ACQ_MT" : "IND_ACQ";
 
   const toggleSection = (section: string) => {
     setExpandedSection(expandedSection === section ? null : section);
@@ -397,7 +429,7 @@ export function InputsView({
       {/* Rent Roll Section */}
       <section className="input-section">
         <h3 onClick={() => toggleSection("rentroll")} className="section-header">
-          Rent Roll - In Place {expandedSection === "rentroll" ? "▼" : "▶"}
+          Rent Roll - In Place ({tenantCount} tenant{tenantCount !== 1 ? "s" : ""} → {autoTemplateId}) {expandedSection === "rentroll" ? "▼" : "▶"}
         </h3>
         {expandedSection === "rentroll" && (
           <div className="section-content">
@@ -508,6 +540,139 @@ export function InputsView({
             </table>
             <button type="button" className="btn-add" onClick={addTenant}>
               + Add Tenant
+            </button>
+          </div>
+        )}
+      </section>
+
+      {/* Market Rollover Section */}
+      <section className="input-section">
+        <h3 onClick={() => toggleSection("rollover")} className="section-header">
+          Market Rollover (Optional) {marketRollovers.length > 0 ? `(${marketRollovers.length})` : ""} {expandedSection === "rollover" ? "▼" : "▶"}
+        </h3>
+        {expandedSection === "rollover" && (
+          <div className="section-content">
+            <p className="section-description">
+              Define renewal/rollover assumptions for tenants whose leases expire during the hold period.
+              Includes downtime and re-leasing economics.
+            </p>
+            {marketRollovers.length > 0 && (
+              <table className="rent-roll-table">
+                <thead>
+                  <tr>
+                    <th>Tenant</th>
+                    <th>Market Rent PSF</th>
+                    <th>Lease Start</th>
+                    <th>Lease End</th>
+                    <th>Downtime</th>
+                    <th>Free Rent</th>
+                    <th>Bump %</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {marketRollovers.map((rollover, idx) => (
+                    <tr key={idx}>
+                      <td>
+                        <input
+                          type="text"
+                          value={rollover.tenant_name}
+                          onChange={(e) =>
+                            updateRollover(idx, "tenant_name", e.target.value)
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={rollover.market_rent_psf_annual}
+                          onChange={(e) =>
+                            updateRollover(
+                              idx,
+                              "market_rent_psf_annual",
+                              parseFloat(e.target.value)
+                            )
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="date"
+                          value={rollover.lease_start}
+                          onChange={(e) =>
+                            updateRollover(idx, "lease_start", e.target.value)
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="date"
+                          value={rollover.lease_end}
+                          onChange={(e) =>
+                            updateRollover(idx, "lease_end", e.target.value)
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          value={rollover.downtime_months}
+                          onChange={(e) =>
+                            updateRollover(
+                              idx,
+                              "downtime_months",
+                              parseInt(e.target.value)
+                            )
+                          }
+                          style={{ width: "60px" }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          value={rollover.free_rent_months ?? 0}
+                          onChange={(e) =>
+                            updateRollover(
+                              idx,
+                              "free_rent_months",
+                              parseInt(e.target.value)
+                            )
+                          }
+                          style={{ width: "60px" }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formatPercent(rollover.annual_bump_pct)}
+                          onChange={(e) =>
+                            updateRollover(
+                              idx,
+                              "annual_bump_pct",
+                              parsePercent(e.target.value)
+                            )
+                          }
+                          style={{ width: "60px" }}
+                        />
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn-delete"
+                          onClick={() => removeRollover(idx)}
+                        >
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <button type="button" className="btn-add" onClick={addRollover}>
+              + Add Rollover Entry
             </button>
           </div>
         )}

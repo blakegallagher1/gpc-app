@@ -93,10 +93,11 @@ run_test_case() {
 
   INPUTS=$(cat "$CASE_FILE")
 
-  # Extract tenant count for display
+  # Extract tenant and rollover count for display
   TENANT_COUNT=$(echo "$INPUTS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('rent_roll',{}).get('tenants_in_place',[])))" 2>/dev/null)
+  ROLLOVER_COUNT=$(echo "$INPUTS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('rent_roll',{}).get('market_rollover',[])))" 2>/dev/null)
   TEMPLATE_ID=$(echo "$INPUTS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('contract',{}).get('template_id',''))" 2>/dev/null)
-  log_info "Template: $TEMPLATE_ID, Tenants: $TENANT_COUNT"
+  log_info "Template: $TEMPLATE_ID, Tenants: $TENANT_COUNT, Rollovers: $ROLLOVER_COUNT"
 
   # Build model via MCP
   BUILD_RESP=$(curl -s -X POST "$MCP_URL/mcp" \

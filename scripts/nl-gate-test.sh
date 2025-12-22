@@ -158,25 +158,82 @@ else
   log_fail "Expected status=ok for multi-tenant prompt, got: $STATUS2"
 fi
 
-# Test 3: Incomplete prompt (should return needs_info)
+# Test 3: Multi-tenant with rollover
 echo ""
-echo ">>> Test 3: Incomplete prompt (missing critical fields)"
-PROMPT3="I'm looking at a warehouse in Phoenix. About 25,000 square feet."
+echo ">>> Test 3: Multi-tenant with rollover assumptions"
+PROMPT3="Looking at a 120,000 SF industrial park called Metro Flex Center in Dallas, TX. Purchase price is \$14M. Three tenants: Acme Logistics has 60,000 SF at \$9.50 PSF NNN expiring March 2027, Beta Supply has 35,000 SF at \$10.25 PSF expiring Dec 2028, and Gamma Corp has 25,000 SF at \$11 PSF expiring June 2029. All have 3% annual bumps. For Acme Logistics, assume they renew at \$12 PSF with 2 months downtime and 1 month free rent. Financing is 60% LTV at 5.75% interest, 7 year hold, exit at 6.75% cap."
 
 RESPONSE3=$(call_tool "ind_acq.build_model" "{\"natural_language\":$(echo "$PROMPT3" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))"),\"mode\":\"extract_only\"}")
 STATUS3=$(get_field "$RESPONSE3" "result.structuredContent.status")
-MISSING3=$(get_field "$RESPONSE3" "result.structuredContent.missing_fields")
+INPUTS3=$(get_field "$RESPONSE3" "result.structuredContent.inputs")
 
 log_info "Status: $STATUS3"
 
-if [ "$STATUS3" = "needs_info" ]; then
+if [ "$STATUS3" = "ok" ]; then
+  log_pass "MT+rollover prompt returned status=ok"
+
+  # Validate extracted inputs
+  log_info "Validating extracted inputs..."
+  VALIDATE_RESPONSE=$(call_tool "ind_acq.validate_inputs" "{\"inputs\":$INPUTS3}")
+  VALID_STATUS=$(get_field "$VALIDATE_RESPONSE" "result.structuredContent.valid")
+
+  if [ "$VALID_STATUS" = "True" ] || [ "$VALID_STATUS" = "true" ]; then
+    log_pass "MT+rollover inputs validated successfully"
+  else
+    ERRORS=$(get_field "$VALIDATE_RESPONSE" "result.structuredContent.errors")
+    log_fail "MT+rollover inputs failed validation: $ERRORS"
+  fi
+
+  # Check tenant count
+  TENANT_COUNT3=$(echo "$INPUTS3" | python3 -c "
+import sys, json
+inputs = json.load(sys.stdin)
+tenants = inputs.get('rent_roll', {}).get('tenants_in_place', [])
+print(len(tenants))
+" 2>/dev/null || echo "0")
+
+  if [ "$TENANT_COUNT3" = "3" ]; then
+    log_pass "Extracted correct number of tenants: 3"
+  else
+    log_fail "Expected 3 tenants, got: $TENANT_COUNT3"
+  fi
+
+  # Check rollover extraction
+  ROLLOVER_COUNT=$(echo "$INPUTS3" | python3 -c "
+import sys, json
+inputs = json.load(sys.stdin)
+rollovers = inputs.get('rent_roll', {}).get('market_rollover', [])
+print(len(rollovers))
+" 2>/dev/null || echo "0")
+
+  if [ "$ROLLOVER_COUNT" -ge 1 ]; then
+    log_pass "Extracted market_rollover entries: $ROLLOVER_COUNT"
+  else
+    log_info "No market_rollover extracted (optional field)"
+  fi
+else
+  log_fail "Expected status=ok for MT+rollover prompt, got: $STATUS3"
+fi
+
+# Test 4: Incomplete prompt (should return needs_info)
+echo ""
+echo ">>> Test 4: Incomplete prompt (missing critical fields)"
+PROMPT4="I'm looking at a warehouse in Phoenix. About 25,000 square feet."
+
+RESPONSE4=$(call_tool "ind_acq.build_model" "{\"natural_language\":$(echo "$PROMPT4" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))"),\"mode\":\"extract_only\"}")
+STATUS4=$(get_field "$RESPONSE4" "result.structuredContent.status")
+MISSING4=$(get_field "$RESPONSE4" "result.structuredContent.missing_fields")
+
+log_info "Status: $STATUS4"
+
+if [ "$STATUS4" = "needs_info" ]; then
   log_pass "Incomplete prompt returned status=needs_info"
 
   # Check that critical fields are in missing_fields
   CRITICAL_FIELDS=("acquisition.purchase_price" "rent_roll.tenants_in_place" "exit.exit_cap_rate")
 
   for FIELD in "${CRITICAL_FIELDS[@]}"; do
-    FOUND=$(echo "$MISSING3" | python3 -c "
+    FOUND=$(echo "$MISSING4" | python3 -c "
 import sys, json
 missing = json.load(sys.stdin) if sys.stdin.read().strip() else []
 for m in missing:
@@ -195,14 +252,14 @@ else:
   done
 
   # Verify at least some missing fields reported
-  MISSING_COUNT=$(echo "$MISSING3" | python3 -c "import sys,json; d=json.load(sys.stdin) if sys.stdin.read().strip() else []; print(len(d) if isinstance(d,list) else 0)" 2>/dev/null || echo "0")
+  MISSING_COUNT=$(echo "$MISSING4" | python3 -c "import sys,json; d=json.load(sys.stdin) if sys.stdin.read().strip() else []; print(len(d) if isinstance(d,list) else 0)" 2>/dev/null || echo "0")
   if [ "$MISSING_COUNT" -gt 0 ]; then
     log_pass "Missing fields reported: $MISSING_COUNT field(s)"
   else
     log_fail "No missing fields reported for incomplete prompt"
   fi
 else
-  log_fail "Expected status=needs_info for incomplete prompt, got: $STATUS3"
+  log_fail "Expected status=needs_info for incomplete prompt, got: $STATUS4"
 fi
 
 # Summary

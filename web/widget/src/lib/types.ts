@@ -12,6 +12,20 @@ export interface Tenant {
   comments?: string;
 }
 
+export interface MarketRollover {
+  tenant_name: string;
+  sf?: number;
+  market_rent_psf_annual: number;
+  annual_bump_pct: number;
+  lease_start: string;
+  lease_end: string;
+  lease_type: string;
+  downtime_months: number;
+  free_rent_months?: number;
+  ti?: { mode: string; value: number };
+  lc?: { mode: string; value: number };
+}
+
 export interface IndAcqInputs {
   contract: {
     contract_version: string;
@@ -62,6 +76,7 @@ export interface IndAcqInputs {
   };
   rent_roll: {
     tenants_in_place: Tenant[];
+    market_rollover?: MarketRollover[];
   };
   debt: {
     acquisition_loan: {

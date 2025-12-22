@@ -54,6 +54,21 @@
           "lease_end": { "index": 8 },
           "lease_type": { "index": 9 }
         }
+      },
+      "rent_roll_market": {
+        "table_name": "tbl_rentroll_market",
+        "source_path": "rent_roll.market_rollover",
+        "columns": {
+          "tenant_name": { "index": 1 },
+          "sf": { "index": 2 },
+          "market_rent_psf_annual": { "index": 4 },
+          "annual_bump_pct": { "index": 6 },
+          "lease_start": { "index": 7 },
+          "lease_end": { "index": 8 },
+          "lease_type": { "index": 9 },
+          "downtime_months": { "index": 10 },
+          "free_rent_months": { "index": 11 }
+        }
       }
     },
 

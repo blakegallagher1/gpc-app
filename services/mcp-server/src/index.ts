@@ -616,6 +616,18 @@ Return a JSON object with this structure:
           "annual_bump_pct": number,
           "lease_type": "NNN" | "GROSS" | "MOD_GROSS"
         }
+      ],
+      "market_rollover": [  // Optional - renewal/rollover terms if mentioned
+        {
+          "tenant_name": string,  // e.g. "ABC Co (Renewal)"
+          "market_rent_psf_annual": number,
+          "annual_bump_pct": number,
+          "lease_start": "YYYY-MM-DD",  // After downtime
+          "lease_end": "YYYY-MM-DD",
+          "lease_type": "NNN",
+          "downtime_months": number,  // Vacancy between leases
+          "free_rent_months": number
+        }
       ]
     },
     "debt": {
@@ -652,7 +664,13 @@ PASS B - Normalize consistency:
 - exit_month must equal hold_period_months
 - debt.acquisition_loan.term_months should match hold_period_months if not specified
 - Tenant SF should sum to net_sf (or close to it)
-- Dates should be internally consistent`;
+- Dates should be internally consistent
+
+ROLLOVER EXTRACTION:
+- If user mentions "renewal", "rollover", "re-lease", or "downtime" for a tenant, extract market_rollover
+- market_rollover.lease_start = tenant's lease_end + downtime_months
+- ONLY extract rollover if market rent, downtime, or renewal terms are explicitly stated
+- Do NOT invent rollover entries - only extract what is mentioned`;
 
 interface ExtractionMeta {
   missing_fields: { path: string; description: string }[];
