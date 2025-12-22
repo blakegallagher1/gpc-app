@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",
-    "build": "next build && pnpm build:skybridge",
+    "build": "next build && npm run build:skybridge",
     "build:skybridge": "node esbuild.config.mjs",
     "build:skybridge:watch": "node esbuild.config.mjs --watch",
     "start": "next start -p 3001",
