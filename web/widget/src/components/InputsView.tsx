@@ -34,7 +34,7 @@ export function InputsView({
     if (!dealDescription.trim()) return;
 
     const result = await onExtractFromNL(dealDescription);
-    if (result.status === "extracted" && result.inputs) {
+    if ((result.status === "ok" || result.status === "needs_info") && result.inputs) {
       // Track which fields were extracted
       const fieldsSet = new Set<string>();
       collectFieldPaths(result.inputs, "", fieldsSet);
@@ -162,13 +162,12 @@ export function InputsView({
             {extractionResult && extractionResult.status === "needs_info" && (
               <div className="extraction-needs-info">
                 <h4>Additional Information Needed:</h4>
-                <p>{extractionResult.follow_up_question}</p>
+                <p>Some fields were extracted. Please provide the missing information below.</p>
                 {extractionResult.missing_fields && extractionResult.missing_fields.length > 0 && (
                   <ul className="missing-fields-list">
                     {extractionResult.missing_fields.map((field, i) => (
                       <li key={i}>
                         <strong>{field.path}:</strong> {field.description}
-                        {field.example && <span className="field-example"> (e.g., {field.example})</span>}
                       </li>
                     ))}
                   </ul>
@@ -176,13 +175,13 @@ export function InputsView({
               </div>
             )}
 
-            {extractionResult && extractionResult.status === "error" && (
+            {extractionResult && extractionResult.status === "failed" && (
               <div className="extraction-error">
                 <strong>Extraction failed:</strong> {extractionResult.error}
               </div>
             )}
 
-            {extractionResult && extractionResult.status === "extracted" && (
+            {extractionResult && extractionResult.status === "ok" && (
               <div className="extraction-success">
                 Inputs extracted successfully! Review and edit below, then run underwrite.
               </div>

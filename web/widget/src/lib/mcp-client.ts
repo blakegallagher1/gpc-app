@@ -97,8 +97,14 @@ export async function validateInputs(inputs: IndAcqInputs): Promise<ValidationRe
   return callTool<ValidationResult>("ind_acq.validate_inputs", { inputs });
 }
 
-export async function buildModel(inputs: IndAcqInputs): Promise<BuildResult> {
-  return callTool<BuildResult>("ind_acq.build_model", { inputs });
+export interface BuildModelOptions {
+  inputs?: Partial<IndAcqInputs>;
+  natural_language?: string;
+  mode?: "extract_only" | "run";
+}
+
+export async function buildModel(options: BuildModelOptions): Promise<BuildResult> {
+  return callTool<BuildResult>("ind_acq.build_model", options as Record<string, unknown>);
 }
 
 export async function getRunStatus(jobId: string): Promise<JobStatus> {
@@ -126,5 +132,6 @@ export async function pollUntilComplete(
 }
 
 export async function extractFromNL(description: string): Promise<ExtractionResult> {
-  return callTool<ExtractionResult>("ind_acq.extract_from_nl", { description });
+  // Uses build_model with mode="extract_only" - no separate tool
+  return buildModel({ natural_language: description, mode: "extract_only" });
 }

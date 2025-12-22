@@ -25,23 +25,22 @@ if (process.env.WIDGET_URL && !process.env.WIDGET_PUBLIC_URL) {
   console.warn("[WARN] Using legacy WIDGET_URL. Please migrate to WIDGET_PUBLIC_URL");
 }
 
+// Tool input schemas (Zod for runtime validation)
 const validateInputsInputSchema = z.object({
   inputs: z.unknown(),
-  partial: z.boolean().optional(),
 });
 
 const buildModelInputSchema = z.object({
-  inputs: z.unknown(),
+  inputs: z.unknown().optional(),
+  natural_language: z.string().optional(),
+  mode: z.enum(["extract_only", "run"]).optional(),
 });
 
 const getRunStatusInputSchema = z.object({
   job_id: z.string().min(1),
 });
 
-const extractFromNLInputSchema = z.object({
-  description: z.string().min(1),
-});
-
+// JSON Schemas for OpenAI tool metadata (exactly 3 tools)
 const toolInputJsonSchemas = {
   validate_inputs: {
     type: "object",
@@ -49,15 +48,19 @@ const toolInputJsonSchemas = {
     required: ["inputs"],
     properties: {
       inputs: { type: "object" },
-      partial: { type: "boolean", description: "If true, returns missing fields instead of validation errors for incomplete inputs" },
     },
   },
   build_model: {
     type: "object",
     additionalProperties: false,
-    required: ["inputs"],
     properties: {
-      inputs: { type: "object" },
+      inputs: { type: "object", description: "Structured underwriting inputs" },
+      natural_language: { type: "string", description: "Natural language deal description for AI extraction" },
+      mode: {
+        type: "string",
+        enum: ["extract_only", "run"],
+        description: "extract_only: return extracted inputs without running. run: validate and build model (default)"
+      },
     },
   },
   get_run_status: {
@@ -68,14 +71,6 @@ const toolInputJsonSchemas = {
       job_id: { type: "string", minLength: 1 },
     },
   },
-  extract_from_nl: {
-    type: "object",
-    additionalProperties: false,
-    required: ["description"],
-    properties: {
-      description: { type: "string", minLength: 1 },
-    },
-  },
 };
 
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -83,11 +78,42 @@ addFormats(ajv);
 
 // Initialize OpenAI client (uses OPENAI_API_KEY env var by default)
 const openai = new OpenAI();
-const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-2024-08-06";
+const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "gpt-5.1";
 
 const inputSchema = await loadJson(contractsPath.inputSchema);
 const outputMapping = await loadJson(contractsPath.outputMapping);
 const validateInputsContract = ajv.compile(inputSchema);
+
+// Critical fields that must be provided (never invented by AI)
+const CRITICAL_FIELDS = [
+  "acquisition.purchase_price",
+  "rent_roll.tenants_in_place",
+  "exit.exit_cap_rate",
+  "debt.acquisition_loan.ltv_max",
+  "debt.acquisition_loan.rate.fixed_rate",
+];
+
+// Non-critical fields with sensible defaults
+const DEFAULT_VALUES: Record<string, unknown> = {
+  "contract.contract_version": "IND_ACQ_V1",
+  "contract.template_id": "IND_ACQ",
+  "contract.currency": "USD",
+  "operating.vacancy_pct": 0.05,
+  "operating.credit_loss_pct": 0.02,
+  "operating.inflation.rent": 0.03,
+  "operating.inflation.expenses": 0.025,
+  "operating.inflation.taxes": 0.02,
+  "operating.expenses.management_fee_pct_egi": 0.04,
+  "operating.expenses.recoveries.mode": "NNN",
+  "acquisition.closing_cost_pct": 0.015,
+  "debt.acquisition_loan.enabled": true,
+  "debt.acquisition_loan.amort_years": 25,
+  "debt.acquisition_loan.io_months": 12,
+  "debt.acquisition_loan.origination_fee_pct": 0.01,
+  "debt.acquisition_loan.rate.type": "FIXED",
+  "exit.sale_cost_pct": 0.02,
+  "exit.forward_noi_months": 12,
+};
 
 // Build CSP directives for Apps SDK widget
 function buildCsp(requestHost?: string): string {
@@ -175,11 +201,12 @@ function createIndAcqServer() {
     })
   );
 
+  // Tool 1: validate_inputs
   server.registerTool(
     "ind_acq.validate_inputs",
     {
       title: "Validate IND_ACQ inputs",
-      description: "Validates inputs for the IND_ACQ underwriting model. Use partial=true to get missing fields list instead of errors.",
+      description: "Validates inputs for the IND_ACQ underwriting model.",
       inputSchema: validateInputsInputSchema,
       _meta: {
         json_schema: toolInputJsonSchemas.validate_inputs,
@@ -188,17 +215,17 @@ function createIndAcqServer() {
       },
     },
     async (args) => {
-      const partialMode = args.partial === true;
-      const result = validateInputs(args.inputs, partialMode);
+      const result = validateInputs(args.inputs);
       return buildToolResponse(result);
     }
   );
 
+  // Tool 2: build_model (with NL extraction support)
   server.registerTool(
     "ind_acq.build_model",
     {
       title: "Build IND_ACQ model",
-      description: "Builds the IND_ACQ underwriting model.",
+      description: "Builds the IND_ACQ underwriting model. Supports natural language extraction via natural_language parameter.",
       inputSchema: buildModelInputSchema,
       _meta: {
         json_schema: toolInputJsonSchemas.build_model,
@@ -208,7 +235,84 @@ function createIndAcqServer() {
       },
     },
     async (args) => {
-      const validation = validateInputs(args.inputs);
+      const mode = args.mode ?? "run";
+      let mergedInputs = (args.inputs ?? {}) as Record<string, unknown>;
+      let extractionMeta: ExtractionMeta | undefined;
+
+      // If natural_language is provided, extract inputs first
+      if (args.natural_language && typeof args.natural_language === "string" && args.natural_language.trim()) {
+        try {
+          const extraction = await extractInputsFromNL(args.natural_language.trim());
+
+          if (extraction.status === "error") {
+            return buildToolResponse({
+              status: "failed",
+              error: extraction.error ?? "Extraction failed",
+            });
+          }
+
+          // Merge extracted inputs with provided inputs (user inputs win)
+          mergedInputs = deepMerge(extraction.inputs ?? {}, mergedInputs);
+          extractionMeta = {
+            missing_fields: extraction.missing_fields ?? [],
+            suggested_defaults: extraction.suggested_defaults ?? {},
+          };
+
+          // If critical fields are missing, return needs_info
+          if (extraction.missing_fields && extraction.missing_fields.length > 0) {
+            const criticalMissing = extraction.missing_fields.filter((f) =>
+              CRITICAL_FIELDS.some((cf) => f.path.startsWith(cf))
+            );
+
+            if (criticalMissing.length > 0) {
+              return buildToolResponse({
+                status: "needs_info",
+                inputs: mergedInputs,
+                missing_fields: criticalMissing,
+                suggested_defaults: extraction.suggested_defaults ?? {},
+              });
+            }
+          }
+        } catch (error) {
+          return buildToolResponse({
+            status: "failed",
+            error: `NL extraction failed: ${String(error)}`,
+          });
+        }
+      }
+
+      // If mode is extract_only, return the merged inputs without running
+      if (mode === "extract_only") {
+        // Validate to find any remaining missing fields
+        const validation = validateInputs(mergedInputs);
+
+        if (validation.status === "invalid") {
+          // Convert validation errors to missing fields for extract_only mode
+          const missingFromValidation = validation.errors
+            .filter((e) => e.message?.includes("required"))
+            .map((e) => ({
+              path: e.path,
+              description: e.message,
+            }));
+
+          return buildToolResponse({
+            status: "needs_info",
+            inputs: mergedInputs,
+            missing_fields: [...(extractionMeta?.missing_fields ?? []), ...missingFromValidation],
+            suggested_defaults: extractionMeta?.suggested_defaults ?? {},
+          });
+        }
+
+        return buildToolResponse({
+          status: "ok",
+          inputs: mergedInputs,
+          missing_fields: extractionMeta?.missing_fields ?? [],
+          suggested_defaults: extractionMeta?.suggested_defaults ?? {},
+        });
+      }
+
+      // mode === "run" - validate and build
+      const validation = validateInputs(mergedInputs);
       if (validation.status === "invalid") {
         return buildToolResponse(validation);
       }
@@ -218,7 +322,7 @@ function createIndAcqServer() {
         response = await fetch(`${EXCEL_ENGINE_BASE_URL}/v1/ind-acq/build`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ inputs: args.inputs, mapping: outputMapping.mapping }),
+          body: JSON.stringify({ inputs: mergedInputs, mapping: outputMapping.mapping }),
         });
       } catch (error) {
         return buildToolResponse({
@@ -250,6 +354,7 @@ function createIndAcqServer() {
     }
   );
 
+  // Tool 3: get_run_status
   server.registerTool(
     "ind_acq.get_run_status",
     {
@@ -325,76 +430,18 @@ function createIndAcqServer() {
     }
   );
 
-  server.registerTool(
-    "ind_acq.extract_from_nl",
-    {
-      title: "Extract IND_ACQ inputs from natural language",
-      description: "Extracts structured IND_ACQ inputs from a natural language deal description.",
-      inputSchema: extractFromNLInputSchema,
-      _meta: {
-        json_schema: toolInputJsonSchemas.extract_from_nl,
-        "openai/toolInvocation/invoking": "Extracting deal parameters...",
-        "openai/toolInvocation/invoked": "Extraction complete",
-      },
-    },
-    async (args) => {
-      const description = args.description?.trim();
-      if (!description) {
-        return buildExtractionResponse({
-          status: "error",
-          error: "Description is required.",
-        });
-      }
-
-      try {
-        const result = await extractInputsFromNL(description);
-        return buildExtractionResponse(result);
-      } catch (error) {
-        return buildExtractionResponse({
-          status: "error",
-          error: `Extraction failed: ${String(error)}`,
-        });
-      }
-    }
-  );
-
   return server;
 }
 
-function validateInputs(inputs: unknown, partialMode = false): ValidationResult {
+// Validation (no partial mode exposed to clients)
+function validateInputs(inputs: unknown): ValidationResult {
   if (!validateInputsContract(inputs)) {
-    const errors = (validateInputsContract.errors ?? []).map((error: { instancePath?: string; message?: string; keyword?: string }) => ({
+    const errors = (validateInputsContract.errors ?? []).map((error: { instancePath?: string; message?: string }) => ({
       path: error.instancePath || "/",
       message: error.message ?? "Invalid value.",
-      keyword: error.keyword,
     }));
-
-    // In partial mode, convert "required" errors to missing fields
-    if (partialMode) {
-      type ErrorEntry = { path: string; message: string; keyword?: string };
-      const missingFields = errors
-        .filter((e: ErrorEntry) => e.keyword === "required")
-        .map((e: ErrorEntry) => ({
-          path: e.path === "/" ? e.message?.match(/"([^"]+)"/)?.[1] || e.path : e.path,
-          description: e.message ?? "Required field",
-        }));
-
-      const otherErrors = errors.filter((e: ErrorEntry) => e.keyword !== "required");
-
-      if (otherErrors.length === 0) {
-        return {
-          status: "needs_info",
-          missing_fields: missingFields,
-        };
-      }
-
-      // If there are non-required errors, still return invalid
-      return { status: "invalid", errors: otherErrors };
-    }
-
     return { status: "invalid", errors };
   }
-
   return { status: "ok" };
 }
 
@@ -425,138 +472,239 @@ async function safeReadBody(response: Response) {
   }
 }
 
-// System prompt for NL extraction
+// Deep merge utility (source wins over target for conflicts)
+function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...target };
+
+  for (const key of Object.keys(source)) {
+    const sourceVal = source[key];
+    const targetVal = result[key];
+
+    if (sourceVal === null || sourceVal === undefined) continue;
+
+    if (
+      typeof sourceVal === "object" &&
+      !Array.isArray(sourceVal) &&
+      typeof targetVal === "object" &&
+      !Array.isArray(targetVal) &&
+      targetVal !== null
+    ) {
+      result[key] = deepMerge(
+        targetVal as Record<string, unknown>,
+        sourceVal as Record<string, unknown>
+      );
+    } else {
+      result[key] = sourceVal;
+    }
+  }
+
+  return result;
+}
+
+// Schema-driven extraction system prompt
 const EXTRACTION_SYSTEM_PROMPT = `You are an expert commercial real estate analyst. Extract structured underwriting inputs from a natural language deal description.
 
-Output a JSON object with the following structure (only include fields mentioned in the description):
+CRITICAL RULES:
+1. NEVER invent or guess values for: purchase_price, rent amounts, exit_cap_rate, ltv_max, fixed_rate, or any debt terms
+2. Only extract values explicitly stated or directly calculable from the description
+3. Convert percentages to decimals (5% -> 0.05)
+4. Convert years to months where appropriate (5 year hold -> 60 months, exit_month = hold_period_months)
+5. For dates not specified, use reasonable estimates based on context (e.g., analysis_start_date = next month's 1st)
+
+Return a JSON object with this structure:
 {
-  "deal": {
-    "project_name": string,
-    "city": string,
-    "state": string (2-letter code),
-    "analysis_start_date": string (YYYY-MM-DD),
-    "hold_period_months": number,
-    "gross_sf": number,
-    "net_sf": number
-  },
-  "acquisition": {
-    "purchase_price": number
-  },
-  "operating": {
-    "vacancy_pct": number (decimal, e.g., 0.05 for 5%),
-    "expenses": {
-      "management_fee_pct_egi": number (decimal)
-    }
-  },
-  "rent_roll": {
-    "tenants_in_place": [
-      {
-        "tenant_name": string,
-        "sf": number,
-        "lease_start": string (YYYY-MM-DD),
-        "lease_end": string (YYYY-MM-DD),
-        "current_rent_psf_annual": number,
-        "annual_bump_pct": number (decimal, e.g., 0.03 for 3%),
-        "lease_type": "NNN" | "GROSS" | "MODIFIED_GROSS"
+  "inputs": {
+    "contract": {
+      "contract_version": "IND_ACQ_V1",
+      "template_id": "IND_ACQ" or "IND_ACQ_MT" (use MT if more than 1 tenant)
+    },
+    "deal": {
+      "project_name": string,
+      "city": string,
+      "state": string (2-letter),
+      "analysis_start_date": "YYYY-MM-DD",
+      "hold_period_months": number,
+      "gross_sf": number,
+      "net_sf": number
+    },
+    "acquisition": {
+      "purchase_price": number,
+      "closing_cost_pct": number (default 0.015)
+    },
+    "operating": {
+      "vacancy_pct": number (default 0.05),
+      "credit_loss_pct": number (default 0.02),
+      "inflation": { "rent": 0.03, "expenses": 0.025, "taxes": 0.02 },
+      "expenses": {
+        "management_fee_pct_egi": number (default 0.04),
+        "fixed_annual": {},
+        "recoveries": { "mode": "NNN" | "MOD_GROSS" | "GROSS" }
       }
-    ]
-  },
-  "debt": {
-    "acquisition_loan": {
-      "ltv_max": number (decimal, e.g., 0.65 for 65%),
-      "rate": {
-        "fixed_rate": number (decimal, e.g., 0.0575 for 5.75%)
-      },
-      "amort_years": number,
-      "io_months": number,
-      "term_months": number
+    },
+    "rent_roll": {
+      "tenants_in_place": [
+        {
+          "tenant_name": string,
+          "sf": number,
+          "lease_start": "YYYY-MM-DD",
+          "lease_end": "YYYY-MM-DD",
+          "current_rent_psf_annual": number,
+          "annual_bump_pct": number,
+          "lease_type": "NNN" | "GROSS" | "MOD_GROSS"
+        }
+      ]
+    },
+    "debt": {
+      "acquisition_loan": {
+        "enabled": true,
+        "ltv_max": number,
+        "amort_years": number (default 25),
+        "io_months": number (default 12),
+        "term_months": number,
+        "origination_fee_pct": number (default 0.01),
+        "rate": {
+          "type": "FIXED",
+          "fixed_rate": number
+        }
+      }
+    },
+    "exit": {
+      "exit_month": number (= hold_period_months),
+      "exit_cap_rate": number,
+      "sale_cost_pct": number (default 0.02),
+      "forward_noi_months": number (default 12)
     }
   },
-  "exit": {
-    "exit_month": number,
-    "exit_cap_rate": number (decimal, e.g., 0.065 for 6.5%)
+  "missing_fields": [
+    { "path": "field.path", "description": "Human readable description" }
+  ],
+  "suggested_defaults": {
+    "field.path": value
   }
 }
 
-Important rules:
-1. Only include fields that are explicitly mentioned or can be reasonably inferred
-2. Convert percentages to decimals (5% -> 0.05)
-3. Convert years to months where appropriate (5 year hold -> 60 months)
-4. Use reasonable defaults for common CRE assumptions when implied
-5. If critical information is missing, still extract what you can
+PASS A - Extract explicitly stated values
+PASS B - Normalize consistency:
+- exit_month must equal hold_period_months
+- debt.acquisition_loan.term_months should match hold_period_months if not specified
+- Tenant SF should sum to net_sf (or close to it)
+- Dates should be internally consistent`;
 
-Also return a "missing_fields" array listing important fields that were NOT provided:
-[
-  { "path": "deal.purchase_price", "description": "Purchase price", "example": "$5,000,000" }
-]`;
+interface ExtractionMeta {
+  missing_fields: { path: string; description: string }[];
+  suggested_defaults: Record<string, unknown>;
+}
 
-interface ExtractionResult {
-  [key: string]: unknown;
-  status: "extracted" | "needs_info" | "error";
+interface ExtractionOutput {
+  status: "ok" | "needs_info" | "error";
   inputs?: Record<string, unknown>;
-  missing_fields?: { path: string; description: string; example?: string }[];
-  follow_up_question?: string;
+  missing_fields?: { path: string; description: string }[];
+  suggested_defaults?: Record<string, unknown>;
   error?: string;
 }
 
-async function extractInputsFromNL(description: string): Promise<ExtractionResult> {
-  const response = await openai.chat.completions.create({
-    model: OPENAI_MODEL,
-    messages: [
-      { role: "system", content: EXTRACTION_SYSTEM_PROMPT },
-      { role: "user", content: description },
-    ],
-    response_format: { type: "json_object" },
-    temperature: 0.1,
-  });
+async function extractInputsFromNL(description: string): Promise<ExtractionOutput> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: OPENAI_MODEL,
+      messages: [
+        { role: "system", content: EXTRACTION_SYSTEM_PROMPT },
+        { role: "user", content: description },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.1,
+    });
 
-  const content = response.choices[0]?.message?.content;
-  if (!content) {
-    return { status: "error", error: "No response from OpenAI" };
-  }
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      return { status: "error", error: "No response from OpenAI" };
+    }
 
-  const parsed = JSON.parse(content) as {
-    inputs: Record<string, unknown>;
-    missing_fields: { path: string; description: string; example?: string }[];
-  };
-
-  // Check for critical missing fields
-  const criticalMissing = parsed.missing_fields?.filter((f) =>
-    ["acquisition.purchase_price", "deal.net_sf", "rent_roll.tenants_in_place"].some((p) =>
-      f.path.startsWith(p)
-    )
-  );
-
-  if (criticalMissing && criticalMissing.length > 0) {
-    return {
-      status: "needs_info",
-      inputs: parsed.inputs,
-      missing_fields: parsed.missing_fields,
-      follow_up_question: `Please provide: ${criticalMissing.map((f) => f.description).join(", ")}`,
+    const parsed = JSON.parse(content) as {
+      inputs?: Record<string, unknown>;
+      missing_fields?: { path: string; description: string }[];
+      suggested_defaults?: Record<string, unknown>;
     };
-  }
 
-  return {
-    status: "extracted",
-    inputs: parsed.inputs,
-    missing_fields: parsed.missing_fields,
-  };
+    // Apply default values for non-critical fields
+    const inputsWithDefaults = applyDefaults(parsed.inputs ?? {});
+
+    // Identify missing critical fields
+    const missingCritical: { path: string; description: string }[] = [];
+    for (const criticalPath of CRITICAL_FIELDS) {
+      if (!hasNestedValue(inputsWithDefaults, criticalPath)) {
+        missingCritical.push({
+          path: criticalPath,
+          description: `Required: ${criticalPath.split(".").pop()?.replace(/_/g, " ")}`,
+        });
+      }
+    }
+
+    const allMissing = [...(parsed.missing_fields ?? []), ...missingCritical];
+    const uniqueMissing = allMissing.filter(
+      (item, index, self) => index === self.findIndex((t) => t.path === item.path)
+    );
+
+    return {
+      status: uniqueMissing.length > 0 ? "needs_info" : "ok",
+      inputs: inputsWithDefaults,
+      missing_fields: uniqueMissing,
+      suggested_defaults: parsed.suggested_defaults ?? {},
+    };
+  } catch (error) {
+    return { status: "error", error: String(error) };
+  }
 }
 
-function buildExtractionResponse(result: ExtractionResult) {
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(result) }],
-    structuredContent: result,
-  };
+function applyDefaults(inputs: Record<string, unknown>): Record<string, unknown> {
+  const result = JSON.parse(JSON.stringify(inputs)) as Record<string, unknown>;
+
+  for (const [path, value] of Object.entries(DEFAULT_VALUES)) {
+    if (!hasNestedValue(result, path)) {
+      setNestedValue(result, path, value);
+    }
+  }
+
+  return result;
+}
+
+function hasNestedValue(obj: Record<string, unknown>, path: string): boolean {
+  const parts = path.split(".");
+  let current: unknown = obj;
+
+  for (const part of parts) {
+    if (current === null || current === undefined || typeof current !== "object") {
+      return false;
+    }
+    current = (current as Record<string, unknown>)[part];
+  }
+
+  return current !== null && current !== undefined;
+}
+
+function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
+  const parts = path.split(".");
+  let current: Record<string, unknown> = obj;
+
+  for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i];
+    if (!current[part] || typeof current[part] !== "object") {
+      current[part] = {};
+    }
+    current = current[part] as Record<string, unknown>;
+  }
+
+  current[parts[parts.length - 1]] = value;
 }
 
 type ValidationResult =
   | { status: "ok" }
-  | { status: "invalid"; errors: { path: string; message: string }[] }
-  | { status: "needs_info"; missing_fields: { path: string; description: string }[] };
+  | { status: "invalid"; errors: { path: string; message: string }[] };
 
 type ToolResult =
   | ValidationResult
+  | { status: "needs_info"; inputs: Record<string, unknown>; missing_fields: { path: string; description: string }[]; suggested_defaults: Record<string, unknown> }
+  | { status: "ok"; inputs: Record<string, unknown>; missing_fields: { path: string; description: string }[]; suggested_defaults: Record<string, unknown> }
   | { status: "started"; job_id: string }
   | { status: "pending"; job_id: string }
   | { status: "running"; job_id: string }

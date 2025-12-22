@@ -2,6 +2,7 @@
   "name": "Simple Single Tenant Industrial",
   "description": "Basic single-tenant deal with all key info",
   "prompt": "Build me an acquisition model for a 50,000 SF industrial building in Houston, TX. Purchase price is $5M, 65% LTV, 5.75% interest rate. Single tenant paying $9.50 PSF NNN with 3% annual bumps, lease expires in 2030. Plan to hold for 5 years and exit at a 6.5% cap rate.",
+  "expected_status": "ok",
   "expected_extracted_fields": [
     "deal.city",
     "deal.state",

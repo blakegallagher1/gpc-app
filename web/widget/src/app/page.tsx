@@ -52,9 +52,9 @@ export default function IndAcqWidget() {
 
       // Build model
       setRunState({ phase: "building" });
-      const buildResult = await buildModel(inputs);
+      const buildResult = await buildModel({ inputs, mode: "run" });
 
-      if (buildResult.status === "failed" || !buildResult.job_id) {
+      if (buildResult.status === "failed" || buildResult.status === "needs_info" || !buildResult.job_id) {
         setRunState({
           phase: "failed",
           error: buildResult.error || "Build failed to start",
@@ -114,15 +114,15 @@ export default function IndAcqWidget() {
       const result = await extractFromNL(description);
       setExtractionResult(result);
 
-      // If extraction succeeded, merge inputs with defaults
-      if (result.status === "extracted" && result.inputs) {
-        setInputs(mergeInputs(defaultInputs, result.inputs));
+      // If extraction succeeded (ok or needs_info with partial inputs), merge inputs
+      if ((result.status === "ok" || result.status === "needs_info") && result.inputs) {
+        setInputs(mergeInputs(defaultInputs, result.inputs as Partial<IndAcqInputs>));
       }
 
       return result;
     } catch (error) {
       const errorResult: ExtractionResult = {
-        status: "error",
+        status: "failed",
         error: String(error),
       };
       setExtractionResult(errorResult);

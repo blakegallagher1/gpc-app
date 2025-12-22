@@ -1,6 +1,6 @@
 #!/bin/bash
 # NL Extraction Regression Test Suite
-# Tests the extract_from_nl tool with golden prompts
+# Tests the build_model tool with mode="extract_only"
 
 set -e
 
@@ -33,6 +33,7 @@ fi
 echo "============================================="
 echo "NL Extraction Regression Test Suite"
 echo "============================================="
+echo "Using build_model with mode='extract_only'"
 echo ""
 
 # Check MCP server
@@ -60,15 +61,15 @@ run_extraction_test() {
 
   # Read the prompt from the test case
   PROMPT=$(python3 -c "import json; print(json.load(open('$CASE_FILE'))['prompt'])")
-  EXPECTED_STATUS=$(python3 -c "import json; d=json.load(open('$CASE_FILE')); print(d.get('expected_status', 'extracted'))")
+  EXPECTED_STATUS=$(python3 -c "import json; d=json.load(open('$CASE_FILE')); print(d.get('expected_status', 'ok'))")
 
   log_info "Prompt: ${PROMPT:0:80}..."
 
-  # Call extract_from_nl via MCP
+  # Call build_model with mode="extract_only" via MCP
   RESPONSE=$(curl -s -X POST "$MCP_URL/mcp" \
     -H "Content-Type: application/json" \
     -H "Accept: application/json, text/event-stream" \
-    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"ind_acq.extract_from_nl\",\"arguments\":{\"description\":$(echo "$PROMPT" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")}}}")
+    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"ind_acq.build_model\",\"arguments\":{\"natural_language\":$(echo "$PROMPT" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))"),\"mode\":\"extract_only\"}}}")
 
   # Extract status from response
   STATUS=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('result',{}).get('structuredContent',{}).get('status',''))" 2>/dev/null)
@@ -89,8 +90,8 @@ run_extraction_test() {
     return 1
   fi
 
-  # If extracted, validate some expected values
-  if [ "$STATUS" = "extracted" ]; then
+  # If ok, validate some expected values
+  if [ "$STATUS" = "ok" ]; then
     INPUTS=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d.get('result',{}).get('structuredContent',{}).get('inputs',{})))" 2>/dev/null)
 
     if [ "$INPUTS" != "{}" ] && [ -n "$INPUTS" ]; then
@@ -121,6 +122,16 @@ except:
       done
     else
       log_fail "[$CASE_NAME] No inputs in response"
+    fi
+  fi
+
+  # If needs_info, check missing fields are reported
+  if [ "$STATUS" = "needs_info" ]; then
+    MISSING=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); mf=d.get('result',{}).get('structuredContent',{}).get('missing_fields',[]); print(len(mf))" 2>/dev/null)
+    if [ "$MISSING" -gt 0 ]; then
+      log_pass "[$CASE_NAME] Missing fields reported: $MISSING field(s)"
+    else
+      log_info "[$CASE_NAME] No missing fields listed"
     fi
   fi
 

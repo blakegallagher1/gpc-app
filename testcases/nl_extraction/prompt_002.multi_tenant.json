@@ -2,6 +2,7 @@
   "name": "Multi-Tenant Industrial Park",
   "description": "Multi-tenant deal with staggered leases",
   "prompt": "I'm looking at a 120,000 SF industrial park in Dallas, TX called Metro Logistics Center. Purchase price is $12.5M. Three tenants: ABC Logistics has 50,000 SF at $9.25 PSF NNN expiring June 2028, Swift Shipping has 40,000 SF at $10 PSF expiring Dec 2029, and Regional Supply has 30,000 SF at $9.50 PSF expiring 2030. All have 3% annual bumps. Looking at 65% LTV at 6% interest, 7 year hold, exit at 7% cap.",
+  "expected_status": "ok",
   "expected_extracted_fields": [
     "deal.project_name",
     "deal.city",

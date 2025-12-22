@@ -72,6 +72,88 @@ Expected output: All tests pass with IRRs in target ranges (Unlevered: 8-18%, Le
 
 ---
 
+## Natural Language Intake
+
+The `build_model` tool supports natural language input for deal extraction. Users can describe a deal in plain English, and the system extracts structured inputs using GPT-5.1.
+
+### How It Works
+
+1. **Extract Mode**: Call `build_model` with `natural_language` and `mode="extract_only"`
+2. **Two-Pass Extraction**:
+   - Pass 1: Initial extraction with JSON schema
+   - Pass 2: Reflection pass to catch any missed details
+3. **Validation**: Extracted values are validated and missing critical fields are identified
+4. **Response**: Returns extracted `inputs`, `missing_fields`, and `suggested_defaults`
+
+### Example Request
+
+```bash
+curl -s -X POST "http://localhost:8000/mcp" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "ind_acq.build_model",
+      "arguments": {
+        "natural_language": "Build me an acquisition model for a 50,000 SF industrial building in Houston, TX. Purchase price is $5M, 65% LTV, 5.75% interest rate.",
+        "mode": "extract_only"
+      }
+    }
+  }'
+```
+
+### Response Statuses
+
+| Status | Description |
+|--------|-------------|
+| `ok` | All critical fields extracted, ready to run |
+| `needs_info` | Missing critical fields, user must provide more info |
+
+### Critical Missing Fields
+
+The following fields are considered **critical** for running a model. If any are missing, the response status will be `needs_info`:
+
+| Path | Description |
+|------|-------------|
+| `acquisition.purchase_price` | Deal purchase price |
+| `rent_roll.tenants_in_place` | At least one tenant in the rent roll |
+| `exit.exit_cap_rate` | Exit cap rate for disposition |
+| `debt.acquisition_loan.ltv_max` | Loan-to-value ratio |
+| `debt.acquisition_loan.rate.fixed_rate` | Debt interest rate |
+
+### Default Values
+
+When fields are not specified, these defaults are applied:
+
+| Path | Default |
+|------|---------|
+| `contract.contract_version` | `IND_ACQ_V1` |
+| `operating.vacancy_pct` | `0.05` (5%) |
+| `operating.mgmt_pct` | `0.03` (3%) |
+| `operating.expense_stop_psf` | `0` |
+| `acquisition.closing_costs_pct` | `0.015` (1.5%) |
+| `debt.acquisition_loan.amort_years` | `30` |
+| `debt.acquisition_loan.io_years` | `0` |
+| `exit.disposition_costs_pct` | `0.02` (2%) |
+
+### NL Extraction Tests
+
+Run the NL extraction regression tests:
+
+```bash
+# Requires OPENAI_API_KEY and MCP server running
+export OPENAI_API_KEY="sk-..."
+./scripts/test-nl-extraction.sh
+```
+
+Test cases are in `testcases/nl_extraction/`:
+- `prompt_001.simple_single_tenant.json` - Basic single-tenant deal
+- `prompt_002.multi_tenant.json` - Multi-tenant with staggered leases
+
+---
+
 ## MCP Server (services/mcp-server)
 
 ```bash

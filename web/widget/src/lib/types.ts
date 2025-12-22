@@ -91,8 +91,11 @@ export interface ValidationResult {
 }
 
 export interface BuildResult {
-  status: "started" | "failed";
+  status: "started" | "needs_info" | "ok" | "failed";
   job_id?: string;
+  inputs?: Partial<IndAcqInputs>;
+  missing_fields?: MissingField[];
+  suggested_defaults?: Record<string, unknown>;
   error?: string;
 }
 
@@ -120,10 +123,5 @@ export interface MissingField {
   example?: string;
 }
 
-export interface ExtractionResult {
-  status: "extracted" | "needs_info" | "error";
-  inputs?: Partial<IndAcqInputs>;
-  missing_fields?: MissingField[];
-  follow_up_question?: string;
-  error?: string;
-}
+// ExtractionResult is now the same as BuildResult with mode="extract_only"
+export type ExtractionResult = BuildResult;
