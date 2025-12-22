@@ -1021,6 +1021,12 @@ static void WriteRentRollTable(
 
     ClearTableData(table);
 
+    // Skip column mapping validation if no rows to write
+    if (inputRows == 0)
+    {
+        return;
+    }
+
     var columnMapping = BuildColumnMapping(table, tableElement);
 
     for (var rowIndex = 0; rowIndex < inputRows; rowIndex++)
@@ -1305,6 +1311,128 @@ static bool TryResolveNestedProperty(JsonElement rowElement, string objectKey, s
 
     value = nestedValue;
     return true;
+}
+
+// ============================================================================
+// Layout Invariant Validation for PDF Fidelity
+// ============================================================================
+
+static List<string> ValidateLayoutInvariants(ExcelPackage package)
+{
+    var warnings = new List<string>();
+
+    // Required sheets for IND_ACQ template (matches reference PDF structure)
+    var requiredSheets = new[]
+    {
+        "Assumptions",
+        "Rent Roll",
+        "Monthly CF",
+        "Annual Cashflow",
+        "Investment Summary"
+    };
+
+    // Check required sheets exist
+    foreach (var sheetName in requiredSheets)
+    {
+        var worksheet = package.Workbook.Worksheets[sheetName];
+        if (worksheet == null)
+        {
+            warnings.Add($"Missing required sheet: {sheetName}");
+            continue;
+        }
+
+        // Check print area is defined
+        if (string.IsNullOrEmpty(worksheet.PrinterSettings.PrintArea?.Address))
+        {
+            warnings.Add($"Missing print area on sheet: {sheetName}");
+        }
+
+        // Check freeze panes on data sheets (should have frozen header row)
+        if (sheetName is "Monthly CF" or "Rent Roll" or "Annual Cashflow")
+        {
+            var view = worksheet.View;
+            // Check if frozen rows/columns are set (Panes collection contains frozen pane info)
+            if (view.Panes == null || view.Panes.Length == 0)
+            {
+                warnings.Add($"Missing freeze panes on sheet: {sheetName}");
+            }
+        }
+
+        // Validate page setup for key sheets
+        ValidatePageSetup(worksheet, sheetName, warnings);
+    }
+
+    // Check Investment Summary has reasonable margins for PDF export
+    var summarySheet = package.Workbook.Worksheets["Investment Summary"];
+    if (summarySheet != null)
+    {
+        var printer = summarySheet.PrinterSettings;
+
+        // Check paper size (should be Letter/A4)
+        if (printer.PaperSize != OfficeOpenXml.ePaperSize.Letter &&
+            printer.PaperSize != OfficeOpenXml.ePaperSize.A4)
+        {
+            warnings.Add($"Investment Summary: Unexpected paper size ({printer.PaperSize})");
+        }
+
+        // Check orientation (summary is usually portrait)
+        if (printer.Orientation != OfficeOpenXml.eOrientation.Portrait &&
+            printer.Orientation != OfficeOpenXml.eOrientation.Landscape)
+        {
+            warnings.Add("Investment Summary: Page orientation not set");
+        }
+    }
+
+    return warnings;
+}
+
+static void ValidatePageSetup(OfficeOpenXml.ExcelWorksheet worksheet, string sheetName, List<string> warnings)
+{
+    var printer = worksheet.PrinterSettings;
+
+    // Check margins are reasonable (not zero, not too large)
+    // EPPlus uses inches for margins
+    const decimal minMargin = 0.25m;
+    const decimal maxMargin = 1.5m;
+
+    if (printer.LeftMargin < minMargin || printer.LeftMargin > maxMargin)
+    {
+        warnings.Add($"{sheetName}: Left margin out of range ({printer.LeftMargin})");
+    }
+    if (printer.RightMargin < minMargin || printer.RightMargin > maxMargin)
+    {
+        warnings.Add($"{sheetName}: Right margin out of range ({printer.RightMargin})");
+    }
+    if (printer.TopMargin < minMargin || printer.TopMargin > maxMargin)
+    {
+        warnings.Add($"{sheetName}: Top margin out of range ({printer.TopMargin})");
+    }
+    if (printer.BottomMargin < minMargin || printer.BottomMargin > maxMargin)
+    {
+        warnings.Add($"{sheetName}: Bottom margin out of range ({printer.BottomMargin})");
+    }
+
+    // Check scaling settings (should be FitToPage or a reasonable percentage)
+    if (printer.FitToPage)
+    {
+        // FitToPage is enabled - good for PDF consistency
+        if (printer.FitToWidth < 1 || printer.FitToWidth > 3)
+        {
+            warnings.Add($"{sheetName}: FitToWidth out of range ({printer.FitToWidth})");
+        }
+        if (printer.FitToHeight < 0 || printer.FitToHeight > 100)
+        {
+            warnings.Add($"{sheetName}: FitToHeight out of range ({printer.FitToHeight})");
+        }
+    }
+    else
+    {
+        // Using scale percentage
+        if (printer.Scale < 50 || printer.Scale > 100)
+        {
+            warnings.Add($"{sheetName}: Scale percentage out of range ({printer.Scale}%)");
+        }
+    }
 }
 
 // ============================================================================
@@ -1693,124 +1821,3 @@ static class JobStatus
 
 readonly record struct NamedRangeSpec(string Key, string Name, string Path);
 readonly record struct PathSegment(string Property, bool IsIndex, int Index, string Raw);
-
-// ============================================================================
-// Layout Invariant Validation for PDF Fidelity
-// ============================================================================
-
-static List<string> ValidateLayoutInvariants(ExcelPackage package)
-{
-    var warnings = new List<string>();
-
-    // Required sheets for IND_ACQ template (matches reference PDF structure)
-    var requiredSheets = new[]
-    {
-        "Assumptions",
-        "Rent Roll",
-        "Monthly CF",
-        "Annual Cashflow",
-        "Investment Summary"
-    };
-
-    // Check required sheets exist
-    foreach (var sheetName in requiredSheets)
-    {
-        var worksheet = package.Workbook.Worksheets[sheetName];
-        if (worksheet == null)
-        {
-            warnings.Add($"Missing required sheet: {sheetName}");
-            continue;
-        }
-
-        // Check print area is defined
-        if (string.IsNullOrEmpty(worksheet.PrinterSettings.PrintArea?.Address))
-        {
-            warnings.Add($"Missing print area on sheet: {sheetName}");
-        }
-
-        // Check freeze panes on data sheets (should have frozen header row)
-        if (sheetName is "Monthly CF" or "Rent Roll" or "Annual Cashflow")
-        {
-            var view = worksheet.View;
-            if (view.FreezePanes == false)
-            {
-                warnings.Add($"Missing freeze panes on sheet: {sheetName}");
-            }
-        }
-
-        // Validate page setup for key sheets
-        ValidatePageSetup(worksheet, sheetName, warnings);
-    }
-
-    // Check Investment Summary has reasonable margins for PDF export
-    var summarySheet = package.Workbook.Worksheets["Investment Summary"];
-    if (summarySheet != null)
-    {
-        var printer = summarySheet.PrinterSettings;
-
-        // Check paper size (should be Letter/A4)
-        if (printer.PaperSize != OfficeOpenXml.ePaperSize.Letter &&
-            printer.PaperSize != OfficeOpenXml.ePaperSize.A4)
-        {
-            warnings.Add($"Investment Summary: Unexpected paper size ({printer.PaperSize})");
-        }
-
-        // Check orientation (summary is usually portrait)
-        if (printer.Orientation != OfficeOpenXml.eOrientation.Portrait &&
-            printer.Orientation != OfficeOpenXml.eOrientation.Landscape)
-        {
-            warnings.Add("Investment Summary: Page orientation not set");
-        }
-    }
-
-    return warnings;
-}
-
-static void ValidatePageSetup(OfficeOpenXml.ExcelWorksheet worksheet, string sheetName, List<string> warnings)
-{
-    var printer = worksheet.PrinterSettings;
-
-    // Check margins are reasonable (not zero, not too large)
-    // EPPlus uses inches for margins
-    const decimal minMargin = 0.25m;
-    const decimal maxMargin = 1.5m;
-
-    if (printer.LeftMargin < minMargin || printer.LeftMargin > maxMargin)
-    {
-        warnings.Add($"{sheetName}: Left margin out of range ({printer.LeftMargin})");
-    }
-    if (printer.RightMargin < minMargin || printer.RightMargin > maxMargin)
-    {
-        warnings.Add($"{sheetName}: Right margin out of range ({printer.RightMargin})");
-    }
-    if (printer.TopMargin < minMargin || printer.TopMargin > maxMargin)
-    {
-        warnings.Add($"{sheetName}: Top margin out of range ({printer.TopMargin})");
-    }
-    if (printer.BottomMargin < minMargin || printer.BottomMargin > maxMargin)
-    {
-        warnings.Add($"{sheetName}: Bottom margin out of range ({printer.BottomMargin})");
-    }
-
-    // Check scaling settings (should be FitToPage or a reasonable percentage)
-    if (printer.FitToPage)
-    {
-        // FitToPage is enabled - good for PDF consistency
-        if (printer.FitToWidth < 1 || printer.FitToWidth > 3)
-        {
-            warnings.Add($"{sheetName}: FitToWidth out of range ({printer.FitToWidth})");
-        }
-        if (printer.FitToHeight < 0 || printer.FitToHeight > 100)
-        {
-            warnings.Add($"{sheetName}: FitToHeight out of range ({printer.FitToHeight})");
-        }
-    }
-    else
-    {
-        // Using scale percentage
-        if (printer.Scale < 50 || printer.Scale > 100)
-        {
-            warnings.Add($"{sheetName}: Scale percentage out of range ({printer.Scale}%)");
-        }
-    }
-}

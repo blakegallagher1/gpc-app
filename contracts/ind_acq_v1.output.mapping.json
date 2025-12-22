@@ -65,9 +65,7 @@
           "annual_bump_pct": { "index": 6 },
           "lease_start": { "index": 7 },
           "lease_end": { "index": 8 },
-          "lease_type": { "index": 9 },
-          "downtime_months": { "index": 10 },
-          "free_rent_months": { "index": 11 }
+          "lease_type": { "index": 9 }
         }
       }
     },
