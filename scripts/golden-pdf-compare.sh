@@ -15,11 +15,12 @@
 #   ./golden-pdf-compare.sh [options]
 #
 # Options:
-#   --skip-pixel-diff   Skip PDF visual comparison
-#   --require-pdf       Fail if PDF comparison cannot run (no XLSX available)
-#   --require-pagecount Fail if PDF page count doesn't match expected (from pack config)
-#   --full-workbook     Convert full workbook instead of pack subset (for debugging)
-#   --keep-artifacts    Keep artifacts after run (always kept in timestamped dir)
+#   --skip-pixel-diff         Skip PDF visual comparison
+#   --require-pdf             Fail if PDF comparison cannot run (no XLSX available)
+#   --require-pagecount       Fail if PDF page count doesn't match expected (from pack config)
+#   --strict-reference-pages  Fail if reference PDF page count differs from generated
+#   --full-workbook           Convert full workbook instead of pack subset (for debugging)
+#   --keep-artifacts          Keep artifacts after run (always kept in timestamped dir)
 #
 # Environment:
 #   MCP_URL             MCP server URL (default: http://localhost:8000)
@@ -46,6 +47,7 @@ GOLDEN_INPUTS="$REPO_ROOT/testcases/ind_acq/golden_pdf_case.inputs.json"
 GOLDEN_EXPECTED="$REPO_ROOT/testcases/ind_acq/golden_pdf_case.expected.json"
 REFERENCE_PDF="$REPO_ROOT/Industrial+Acquisition+Assumptions.pdf"
 PACK_CONFIG="$REPO_ROOT/docs/IND_ACQ_PACK_EXPORT.json"
+PAGE_MAP="$REPO_ROOT/docs/IND_ACQ_REFERENCE_PAGE_MAP.json"
 
 # Timestamped artifact directory
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -76,6 +78,7 @@ WARNINGS=0
 SKIP_PIXEL_DIFF=false
 REQUIRE_PDF=false
 REQUIRE_PAGECOUNT=false
+STRICT_REFERENCE_PAGES=false
 FULL_WORKBOOK=false
 KEEP_ARTIFACTS=true  # Always keep in timestamped dir by default
 XLSX_AVAILABLE=false
@@ -87,6 +90,7 @@ for arg in "$@"; do
     --skip-pixel-diff) SKIP_PIXEL_DIFF=true ;;
     --require-pdf) REQUIRE_PDF=true ;;
     --require-pagecount) REQUIRE_PAGECOUNT=true ;;
+    --strict-reference-pages) STRICT_REFERENCE_PAGES=true ;;
     --full-workbook) FULL_WORKBOOK=true ;;
     --keep-artifacts) KEEP_ARTIFACTS=true ;;
   esac
@@ -545,10 +549,10 @@ validate_page_count() {
   fi
 }
 
-# Compare PDFs using pixel diff
+# Compare PDFs using pixel diff (shared pages only)
 compare_pdfs() {
   echo ""
-  echo ">>> Comparing PDFs (Pixel Diff)..."
+  echo ">>> Comparing PDFs (Pixel Diff - Shared Pages)..."
 
   if [ "$SKIP_PIXEL_DIFF" = true ]; then
     log_warn "Skipping pixel diff (missing dependencies or --skip-pixel-diff flag)"
@@ -569,55 +573,82 @@ compare_pdfs() {
     return 0
   fi
 
-  # Convert PDFs to images and compare each page
-  log_info "Rendering PDFs to images for comparison..."
-
   # Get page counts
   local GEN_PAGES=$(identify -format "%n\n" "$GENERATED_PDF" 2>/dev/null | head -1)
   local REF_PAGES=$(identify -format "%n\n" "$REFERENCE_PDF" 2>/dev/null | head -1)
 
   log_info "Generated PDF: $GEN_PAGES pages, Reference PDF: $REF_PAGES pages"
 
+  # Check page count mismatch
   if [ "$GEN_PAGES" != "$REF_PAGES" ]; then
-    log_warn "Page count mismatch: generated=$GEN_PAGES, reference=$REF_PAGES"
+    if [ "$STRICT_REFERENCE_PAGES" = true ]; then
+      log_fail "Page count mismatch (--strict-reference-pages): generated=$GEN_PAGES, reference=$REF_PAGES"
+      exit 1
+    else
+      log_info "Page count differs (expected - reference has additional modules)"
+      log_info "Using shared-page mapping from: $PAGE_MAP"
+    fi
   fi
 
-  # Compare first few key pages (Investment Summary, Assumptions, etc.)
-  local PAGES_TO_COMPARE=(0 1 7)  # Page indices for key sheets
-  local PAGES_COMPARED=0
+  # Load page mappings from JSON
+  if [ ! -f "$PAGE_MAP" ]; then
+    log_warn "Page mapping not found: $PAGE_MAP - skipping shared-page comparison"
+    return 0
+  fi
 
-  for page_idx in "${PAGES_TO_COMPARE[@]}"; do
-    local page_num=$((page_idx + 1))
+  local MAPPINGS=$(python3 -c "import json; m=json.load(open('$PAGE_MAP')); print(' '.join([f\"{p['generated_page']}:{p['reference_page']}\" for p in m['page_mappings']]))" 2>/dev/null || echo "")
+
+  if [ -z "$MAPPINGS" ]; then
+    log_warn "No page mappings defined - skipping comparison"
+    return 0
+  fi
+
+  log_info "Comparing shared pages only (conservative mapping)"
+
+  local PAGES_COMPARED=0
+  local PAGES_EXCEEDED=0
+
+  # Compare each mapped page
+  for mapping in $MAPPINGS; do
+    IFS=':' read -r gen_page ref_page <<< "$mapping"
+
+    local gen_idx=$((gen_page - 1))
+    local ref_idx=$((ref_page - 1))
+
+    log_info "Comparing: Generated p$gen_page ↔ Reference p$ref_page"
 
     # Extract pages as PNG
-    convert -density 150 "$GENERATED_PDF[$page_idx]" -background white -flatten "$DIFF_DIR/gen_page_$page_num.png" 2>/dev/null || true
-    convert -density 150 "$REFERENCE_PDF[$page_idx]" -background white -flatten "$DIFF_DIR/ref_page_$page_num.png" 2>/dev/null || true
+    convert -density 150 "$GENERATED_PDF[$gen_idx]" -background white -flatten "$DIFF_DIR/gen_page_${gen_page}.png" 2>/dev/null || true
+    convert -density 150 "$REFERENCE_PDF[$ref_idx]" -background white -flatten "$DIFF_DIR/ref_page_${ref_page}.png" 2>/dev/null || true
 
-    if [ ! -f "$DIFF_DIR/gen_page_$page_num.png" ] || [ ! -f "$DIFF_DIR/ref_page_$page_num.png" ]; then
-      log_warn "Could not extract page $page_num for comparison"
+    if [ ! -f "$DIFF_DIR/gen_page_${gen_page}.png" ] || [ ! -f "$DIFF_DIR/ref_page_${ref_page}.png" ]; then
+      log_warn "Could not extract pages for comparison (gen=$gen_page, ref=$ref_page)"
       continue
     fi
 
     # Compare using ImageMagick
-    local DIFF_RESULT=$(compare -metric AE "$DIFF_DIR/gen_page_$page_num.png" "$DIFF_DIR/ref_page_$page_num.png" "$DIFF_DIR/diff_page_$page_num.png" 2>&1 || true)
+    local DIFF_RESULT=$(compare -metric AE "$DIFF_DIR/gen_page_${gen_page}.png" "$DIFF_DIR/ref_page_${ref_page}.png" "$DIFF_DIR/diff_page_${gen_page}_vs_${ref_page}.png" 2>&1 || true)
 
     # Get pixel count for percentage
-    local TOTAL_PIXELS=$(identify -format "%w*%h\n" "$DIFF_DIR/gen_page_$page_num.png" | bc 2>/dev/null || echo "1")
+    local TOTAL_PIXELS=$(identify -format "%w*%h\n" "$DIFF_DIR/gen_page_${gen_page}.png" | bc 2>/dev/null || echo "1")
     local DIFF_PCT=$(echo "scale=4; $DIFF_RESULT / $TOTAL_PIXELS" | bc 2>/dev/null || echo "0")
 
-    log_info "Page $page_num: $DIFF_RESULT different pixels (${DIFF_PCT}%)"
+    log_info "  Pixel diff: $DIFF_RESULT different pixels (${DIFF_PCT}%)"
 
     PAGES_COMPARED=$((PAGES_COMPARED + 1))
 
     # Check threshold
     if (( $(echo "$DIFF_PCT > $PIXEL_DIFF_THRESHOLD" | bc -l 2>/dev/null || echo "0") )); then
-      log_warn "Page $page_num exceeds ${PIXEL_DIFF_THRESHOLD}% threshold (${DIFF_PCT}%)"
+      log_warn "  Page exceeds ${PIXEL_DIFF_THRESHOLD}% threshold (${DIFF_PCT}%)"
+      PAGES_EXCEEDED=$((PAGES_EXCEEDED + 1))
     fi
   done
 
   if [ $PAGES_COMPARED -gt 0 ]; then
-    log_pass "Compared $PAGES_COMPARED pages"
+    log_pass "Compared $PAGES_COMPARED shared pages ($PAGES_EXCEEDED exceeded threshold)"
     log_info "Diff images saved to: $DIFF_DIR"
+  else
+    log_warn "No shared pages compared"
   fi
 }
 

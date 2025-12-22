@@ -3,6 +3,7 @@
   "title": "IND_ACQ Pack Export Configuration",
   "description": "Defines the investor pack PDF export: sheet order, visibility, and page expectations",
   "version": "1.0.0",
+  "pack_version": "IND_ACQ_PACK_V1",
   "template_id": "IND_ACQ",
 
   "pack_sheets": [
@@ -65,9 +66,9 @@
     {
       "name": "Monthly CF",
       "order": 9,
-      "expected_pages": 5,
+      "expected_pages": 3,
       "orientation": "landscape",
-      "description": "Detailed monthly cash flows (60 months = ~5 pages)"
+      "description": "Detailed monthly cash flows (60 months = 3 pages)"
     }
   ],
 
@@ -78,8 +79,8 @@
     }
   ],
 
-  "expected_total_pages": 13,
-  "page_tolerance": 2,
+  "expected_total_pages": 11,
+  "page_tolerance": 0,
 
   "print_settings": {
     "paper_size": "Letter",
@@ -93,9 +94,10 @@
   },
 
   "notes": [
-    "Page counts are estimates based on default print settings",
-    "Monthly CF pages depend on hold period (60 months = ~5 pages at 12 cols/page)",
-    "Reference PDF (Industrial+Acquisition+Assumptions.pdf) is from Top Shelf Models with different sheets",
-    "This pack config defines OUR IND_ACQ template's investor deliverable"
+    "IND_ACQ_PACK_V1 is locked at exactly 11 pages (tolerance=0)",
+    "8 single-page sheets + 3-page Monthly CF = 11 pages total",
+    "Reference PDF (Industrial+Acquisition+Assumptions.pdf) has 22 pages with additional modules",
+    "Shared-page comparison uses IND_ACQ_REFERENCE_PAGE_MAP.json for mapped pages only",
+    "This pack config defines OUR IND_ACQ template's official investor deliverable"
   ]
 }

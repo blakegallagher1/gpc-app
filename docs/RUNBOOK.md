@@ -625,7 +625,7 @@ The investor pack export is defined in `docs/IND_ACQ_PACK_EXPORT.json`. This con
 - Expected page counts per sheet
 - Print orientation settings
 
-### IND_ACQ Pack Sheets (13 pages expected)
+### IND_ACQ Pack V1 Sheets (11 pages - LOCKED)
 
 | Order | Sheet Name | Pages | Orientation | Content |
 |-------|------------|-------|-------------|---------|
@@ -637,14 +637,30 @@ The investor pack export is defined in `docs/IND_ACQ_PACK_EXPORT.json`. This con
 | 6 | Assumptions | 1 | Portrait | Deal assumptions and inputs |
 | 7 | Rent Roll | 1 | Landscape | Tenant schedule with escalations |
 | 8 | Renovation Budget | 1 | Portrait | Capex and renovation items |
-| 9 | Monthly CF | 5 | Landscape | 60-month detailed cash flows |
+| 9 | Monthly CF | 3 | Landscape | 60-month detailed cash flows |
+
+**Total:** 11 pages (8 single-page sheets + 3-page Monthly CF)
+**Tolerance:** 0 pages (strict)
+**Pack Version:** `IND_ACQ_PACK_V1`
 
 **Excluded Sheets:**
 - `_TEMPLATE_META` - Internal template metadata
 
-> **Note**: The reference PDF (`Industrial+Acquisition+Assumptions.pdf`) is from Top Shelf Models
-> and has 22 pages with additional sheets (Waterfall, Sale Comps, Lease Comps, SOFR, etc.)
-> that are not part of our IND_ACQ template. Pack comparison uses our template's sheets.
+### Reference PDF Page Count Difference
+
+> **Important**: The reference PDF (`Industrial+Acquisition+Assumptions.pdf`) from Top Shelf Models
+> has 22 pages because it includes additional modules NOT in our IND_ACQ template:
+> - LP/GP Waterfall calculations
+> - Sale comps (market comparables)
+> - Lease comps (lease benchmarking)
+> - SOFR/rate schedules
+> - Additional sensitivity/scenario analysis
+>
+> **Our pack has 11 pages by design.** This is correct and expected.
+>
+> Golden PDF testing uses **shared-page mapping** (`IND_ACQ_REFERENCE_PAGE_MAP.json`) to compare
+> only pages that exist in both PDFs. This provides meaningful fidelity validation without
+> requiring identical page counts.
 
 ### Layout Invariants
 
@@ -673,19 +689,46 @@ brew install imagemagick
 MCP_URL=https://mcp-server-xxx.onrender.com ./scripts/golden-pdf-compare.sh
 
 # Options:
-./scripts/golden-pdf-compare.sh --skip-pixel-diff    # Skip visual comparison
-./scripts/golden-pdf-compare.sh --require-pdf        # Fail if PDF cannot be generated
-./scripts/golden-pdf-compare.sh --require-pagecount  # Fail if page count doesn't match
-./scripts/golden-pdf-compare.sh --full-workbook      # Export all sheets (not pack only)
+./scripts/golden-pdf-compare.sh --skip-pixel-diff         # Skip visual comparison
+./scripts/golden-pdf-compare.sh --require-pdf             # Fail if PDF cannot be generated
+./scripts/golden-pdf-compare.sh --require-pagecount       # Fail if page count doesn't match (11 pages strict)
+./scripts/golden-pdf-compare.sh --strict-reference-pages  # Fail if reference PDF page count differs
+./scripts/golden-pdf-compare.sh --full-workbook           # Export all sheets (not pack only)
 ```
 
 ### Pack Export Workflow
 
-The test generates two PDFs:
-1. **Full workbook PDF** - All visible sheets (for debugging)
-2. **Pack PDF** - Only investor pack sheets per `IND_ACQ_PACK_EXPORT.json`
+The test generates PDFs and validates using shared-page mapping:
 
-Page count validation uses the pack PDF (expected: 13 pages ±2).
+1. **Full workbook XLSX** - Generated from model (all 10 sheets, 273KB)
+2. **Pack XLSX** - Extracted subset (9 investor sheets, 241KB)
+3. **Pack PDF** - Converted from pack XLSX (exactly 11 pages)
+4. **Shared-page comparison** - Only compares mapped pages vs reference PDF
+
+**Page Count Validation:**
+- Pack PDF must be exactly 11 pages (tolerance = 0)
+- Reference PDF has 22 pages (includes modules we don't have)
+- Default behavior: Compare shared pages only (no warning for page count difference)
+- With `--strict-reference-pages`: Fail if page counts differ (use for debugging)
+
+**Shared-Page Mapping:**
+- Defined in `IND_ACQ_REFERENCE_PAGE_MAP.json`
+- Currently maps 2 pages (Investment Summary, Assumptions)
+- Conservative approach: Only map pages with high/medium confidence
+- Pixel diff runs only on mapped pages for meaningful comparison
+
+### Expanding the Pack (Future)
+
+To add new modules to IND_ACQ_PACK_V1 (e.g., Waterfall, Comps):
+
+1. **Add sheets to template** - Implement new Excel sheets
+2. **Update pack config** - Add to `IND_ACQ_PACK_EXPORT.json` with page counts
+3. **Increment pack version** - Change to `IND_ACQ_PACK_V2`
+4. **Update page mapping** - Add new page mappings to `IND_ACQ_REFERENCE_PAGE_MAP.json`
+5. **Update expected total** - Adjust `expected_total_pages` (keep `page_tolerance=0`)
+6. **Re-run golden test** - Validate new pack generates correctly
+
+**Note:** Pack versioning ensures deterministic testing as template evolves.
 
 ### Test Files
 
@@ -694,6 +737,8 @@ Page count validation uses the pack PDF (expected: 13 pages ±2).
 | `testcases/ind_acq/golden_pdf_case.inputs.json` | Golden testcase matching reference PDF |
 | `testcases/ind_acq/golden_pdf_case.expected.json` | Expected outputs with tolerances |
 | `scripts/golden-pdf-compare.sh` | Test runner script |
+| `docs/IND_ACQ_PACK_EXPORT.json` | Pack definition (V1: 11 pages, 9 sheets) |
+| `docs/IND_ACQ_REFERENCE_PAGE_MAP.json` | Shared-page mapping for comparison |
 
 ### Expected Metrics and Tolerances
 
