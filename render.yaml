@@ -65,6 +65,6 @@ services:
       # OpenAI API key for NL extraction
       - key: OPENAI_API_KEY
         sync: false
-      # OpenAI model for NL extraction (default: gpt-4o)
+      # OpenAI model for NL extraction (default: gpt-5.1)
       - key: OPENAI_MODEL
-        value: gpt-4o
+        value: gpt-5.1

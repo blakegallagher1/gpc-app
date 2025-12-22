@@ -116,7 +116,7 @@ addFormats(ajv);
 
 // Initialize OpenAI client (uses OPENAI_API_KEY env var by default)
 const openai = new OpenAI();
-const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o";
+const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "gpt-5.1";
 
 const inputSchema = await loadJson(contractsPath.inputSchema);
 const outputMapping = await loadJson(contractsPath.outputMapping);
