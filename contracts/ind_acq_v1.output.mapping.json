@@ -1,0 +1,127 @@
+{
+  "contract_version": "IND_ACQ_V1",
+  "template_id": "IND_ACQ",
+
+  "mapping": {
+    "named_ranges": {
+      "deal.project_name": "deal_project_name",
+      "deal.analysis_start_date": "deal_analysis_start_date",
+      "deal.hold_period_months": "deal_hold_period_months",
+      "deal.gross_sf": "deal_gross_sf",
+      "deal.net_sf": "deal_net_sf",
+
+      "acquisition.purchase_price": "acq_purchase_price",
+      "acquisition.closing_cost_pct": "acq_closing_cost_pct",
+      "acquisition.acquisition_fee_pct": "acq_fee_pct",
+      "acquisition.legal_costs": "acq_legal_costs",
+      "acquisition.other_financing_fees": "acq_other_financing_fees",
+
+      "operating.vacancy_pct": "ops_vacancy_pct",
+      "operating.credit_loss_pct": "ops_credit_loss_pct",
+      "operating.inflation.rent": "infl_other_revenue",
+      "operating.inflation.expenses": "infl_expenses",
+      "operating.inflation.taxes": "infl_taxes",
+
+      "operating.expenses.management_fee_pct_egi": "Assumptions!$P$19",
+      "operating.expenses.fixed_annual.insurance": "Assumptions!$P$20",
+      "operating.expenses.fixed_annual.utilities": "Assumptions!$P$22",
+      "operating.expenses.fixed_annual.repairs_maintenance": "Assumptions!$P$23",
+      "operating.expenses.fixed_annual.security": "Assumptions!$P$25",
+      "operating.expenses.fixed_annual.property_taxes": "Assumptions!$P$27",
+      "operating.expenses.fixed_annual.other_expense_1": "Assumptions!$P$28",
+      "operating.expenses.capex_reserves_per_nsf_annual": "Assumptions!$P$33",
+
+      "debt.acquisition_loan.ltv_max": "debt_acq_ltv_max",
+      "debt.acquisition_loan.amort_years": "debt_acq_amort_years",
+      "debt.acquisition_loan.io_months": "debt_acq_io_months",
+      "debt.acquisition_loan.origination_fee_pct": "debt_acq_orig_fee_pct",
+      "debt.acquisition_loan.rate.fixed_rate": "debt_acq_fixed_rate_or_spread",
+
+      "exit.exit_cap_rate": "exit_cap_rate",
+      "exit.sale_cost_pct": "exit_sale_cost_pct",
+
+      "waterfall.lp_equity_pct": "wf_lp_pct",
+      "waterfall.gp_equity_pct": "wf_gp_pct",
+      "waterfall.tiers[0].hurdle_irr": "wf_h1_irr",
+      "waterfall.tiers[0].promote_pct": "wf_h1_promote"
+    },
+
+    "tables": {
+      "rent_roll_in_place": {
+        "table_name": "tbl_rentroll_in_place",
+        "source_path": "rent_roll.tenants_in_place",
+        "columns": {
+          "tenant_name": { "index": 1 },
+          "sf": { "index": 2 },
+          "current_rent_psf_annual": { "index": 4 },
+          "annual_bump_pct": { "index": 6 },
+          "lease_start": { "index": 7 },
+          "lease_end": { "index": 8 },
+          "lease_type": { "index": 9 }
+        }
+      },
+      "rent_roll_market": {
+        "table_name": "tbl_rentroll_market",
+        "source_path": "rent_roll.tenants_market",
+        "columns": {
+          "tenant_name": { "index": 1 },
+          "sf": { "index": 2 },
+          "market_rent_psf_annual": { "index": 4 },
+          "annual_bump_pct": { "index": 6 },
+          "lease_start": { "index": 7 },
+          "lease_end": { "index": 8 },
+          "lease_type": { "index": 9 }
+        }
+      }
+    },
+
+    "output_named_ranges": {
+      "out.template_id": "out_template_id",
+      "out.template_version": "out_template_version",
+      "out.contract_version": "out_contract_version",
+
+      "out.checks.status": "out_check_status",
+      "out.checks.error_count": "out_check_error_count",
+      "out.checks.sources_equal_uses": "out_check_sources_equal_uses",
+      "out.checks.waterfall_ties": "out_check_waterfall_ties",
+      "out.checks.cashflow_ties_monthly_vs_annual": "out_check_cf_ties",
+
+      "out.returns.unlevered.irr": "out_unlevered_irr",
+      "out.returns.unlevered.multiple": "out_unlevered_multiple",
+      "out.returns.unlevered.net_profit": "out_unlevered_net_profit",
+      "out.returns.unlevered.peak_capital": "out_unlevered_peak_capital",
+
+      "out.returns.levered.irr": "out_levered_irr",
+      "out.returns.levered.multiple": "out_levered_multiple",
+      "out.returns.levered.net_profit": "out_levered_net_profit",
+      "out.returns.levered.peak_equity": "out_levered_peak_equity",
+
+      "out.returns.investor.irr": "out_investor_irr",
+      "out.returns.investor.multiple": "out_investor_multiple",
+      "out.returns.investor.net_profit": "out_investor_net_profit",
+      "out.returns.investor.peak_capital": "out_investor_peak_capital",
+
+      "out.operations.egi_year1": "out_egi_year1",
+      "out.operations.opex_year1": "out_opex_year1",
+      "out.operations.noi_year1": "out_noi_year1",
+
+      "out.debt.acq.loan_amount_sized": "out_debt_acq_loan_amount",
+
+      "out.exit.net_sale_proceeds": "out_net_sale_proceeds"
+    }
+  },
+
+  "ui_default_metrics": [
+    "out.checks.status",
+    "out.checks.error_count",
+    "out.returns.unlevered.irr",
+    "out.returns.unlevered.multiple",
+    "out.returns.levered.irr",
+    "out.returns.levered.multiple",
+    "out.returns.investor.irr",
+    "out.returns.investor.multiple",
+    "out.operations.noi_year1",
+    "out.debt.acq.loan_amount_sized",
+    "out.exit.net_sale_proceeds"
+  ]
+}

@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IND_ACQ Underwriting Results</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8f9fa;
+      color: #1a1a1a;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 1rem; }
+    .card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #666;
+      margin-bottom: 12px;
+    }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+    .metric { }
+    .metric-label { font-size: 0.75rem; color: #666; margin-bottom: 2px; }
+    .metric-value { font-size: 1.25rem; font-weight: 600; }
+    .metric-value.positive { color: #16a34a; }
+    .metric-value.negative { color: #dc2626; }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .status-ok { background: #dcfce7; color: #16a34a; }
+    .status-error { background: #fee2e2; color: #dc2626; }
+    .download-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #2563eb;
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .download-btn:hover { background: #1d4ed8; }
+    .download-btn:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #666;
+    }
+    .empty-state h2 { font-size: 1.25rem; margin-bottom: 8px; color: #1a1a1a; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>IND_ACQ Underwriting</h1>
+
+    <div id="empty-state" class="card empty-state">
+      <h2>No Results Yet</h2>
+      <p>Run the IND_ACQ build model tool to generate underwriting results.</p>
+    </div>
+
+    <div id="results" class="hidden">
+      <div class="card">
+        <div class="card-title">Status</div>
+        <div style="display: flex; align-items: center; gap: 16px;">
+          <span id="status-badge" class="status-badge status-ok">OK</span>
+          <span id="error-count" style="color: #666; font-size: 0.875rem;"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Returns Summary</div>
+        <div class="metrics">
+          <div class="metric">
+            <div class="metric-label">Unlevered IRR</div>
+            <div id="unlevered-irr" class="metric-value">--</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Levered IRR</div>
+            <div id="levered-irr" class="metric-value">--</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Equity Multiple</div>
+            <div id="equity-multiple" class="metric-value">--</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Net Profit</div>
+            <div id="net-profit" class="metric-value">--</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Year 1 Operations</div>
+        <div class="metrics">
+          <div class="metric">
+            <div class="metric-label">EGI</div>
+            <div id="egi-y1" class="metric-value">--</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">OpEx</div>
+            <div id="opex-y1" class="metric-value">--</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">NOI</div>
+            <div id="noi-y1" class="metric-value">--</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Exit</div>
+        <div class="metrics">
+          <div class="metric">
+            <div class="metric-label">Net Sale Proceeds</div>
+            <div id="exit-proceeds" class="metric-value">--</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Loan Amount</div>
+            <div id="loan-amount" class="metric-value">--</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Download</div>
+        <a id="download-btn" class="download-btn" href="#" target="_blank" rel="noopener">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Download Excel Model
+        </a>
+        <p id="download-note" style="margin-top: 8px; font-size: 0.75rem; color: #666;"></p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const fmt = {
+      pct: (v) => v != null ? `${(v * 100).toFixed(2)}%` : '--',
+      usd: (v) => v != null ? '$' + v.toLocaleString('en-US', { maximumFractionDigits: 0 }) : '--',
+      mult: (v) => v != null ? `${v.toFixed(2)}x` : '--',
+    };
+
+    function updateUI(outputs, signedUrl, signedUrlExpiry) {
+      document.getElementById('empty-state').classList.add('hidden');
+      document.getElementById('results').classList.remove('hidden');
+
+      // Status
+      const status = outputs['out.checks.status'] || 'UNKNOWN';
+      const errorCount = outputs['out.checks.error_count'] || 0;
+      const badge = document.getElementById('status-badge');
+      badge.textContent = status;
+      badge.className = `status-badge ${status === 'OK' ? 'status-ok' : 'status-error'}`;
+      document.getElementById('error-count').textContent = errorCount > 0 ? `${errorCount} error(s)` : '';
+
+      // Returns
+      const unlIrr = outputs['out.returns.unlevered.irr'];
+      const levIrr = outputs['out.returns.levered.irr'];
+      document.getElementById('unlevered-irr').textContent = fmt.pct(unlIrr);
+      document.getElementById('unlevered-irr').className = `metric-value ${unlIrr > 0 ? 'positive' : 'negative'}`;
+      document.getElementById('levered-irr').textContent = fmt.pct(levIrr);
+      document.getElementById('levered-irr').className = `metric-value ${levIrr > 0 ? 'positive' : 'negative'}`;
+      document.getElementById('equity-multiple').textContent = fmt.mult(outputs['out.returns.levered.multiple']);
+      document.getElementById('net-profit').textContent = fmt.usd(outputs['out.returns.levered.net_profit']);
+
+      // Year 1
+      document.getElementById('egi-y1').textContent = fmt.usd(outputs['out.operations.egi_year1']);
+      document.getElementById('opex-y1').textContent = fmt.usd(outputs['out.operations.opex_year1']);
+      document.getElementById('noi-y1').textContent = fmt.usd(outputs['out.operations.noi_year1']);
+
+      // Exit
+      document.getElementById('exit-proceeds').textContent = fmt.usd(outputs['out.exit.net_sale_proceeds']);
+      document.getElementById('loan-amount').textContent = fmt.usd(outputs['out.debt.acq.loan_amount_sized']);
+
+      // Download
+      const downloadBtn = document.getElementById('download-btn');
+      const downloadNote = document.getElementById('download-note');
+      if (signedUrl) {
+        downloadBtn.href = signedUrl;
+        downloadBtn.style.pointerEvents = 'auto';
+        downloadBtn.style.opacity = '1';
+        if (signedUrlExpiry) {
+          const expiry = new Date(signedUrlExpiry);
+          downloadNote.textContent = `Link expires at ${expiry.toLocaleTimeString()}`;
+        }
+      } else {
+        downloadBtn.href = '#';
+        downloadBtn.style.pointerEvents = 'none';
+        downloadBtn.style.opacity = '0.5';
+        downloadNote.textContent = 'Download not available (no signed URL)';
+      }
+    }
+
+    // Listen for postMessage from parent (ChatGPT)
+    window.addEventListener('message', (event) => {
+      try {
+        const data = event.data;
+        if (data && data.outputs) {
+          updateUI(data.outputs, data.signed_url, data.signed_url_expiry);
+        }
+      } catch (e) {
+        console.error('Error processing message:', e);
+      }
+    });
+
+    // For standalone testing
+    if (window.location.search.includes('demo')) {
+      updateUI({
+        'out.checks.status': 'OK',
+        'out.checks.error_count': 0,
+        'out.returns.unlevered.irr': 0.12,
+        'out.returns.levered.irr': 0.136,
+        'out.returns.levered.multiple': 1.29,
+        'out.returns.levered.net_profit': 2589588,
+        'out.operations.egi_year1': 513671,
+        'out.operations.opex_year1': -120574,
+        'out.operations.noi_year1': 380593,
+        'out.exit.net_sale_proceeds': 6029946,
+        'out.debt.acq.loan_amount_sized': 3028984,
+      }, null, null);
+    }
+  </script>
+</body>
+</html>

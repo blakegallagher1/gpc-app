@@ -1,0 +1,64 @@
+# Render Blueprint - IND_ACQ Services
+# https://render.com/docs/blueprint-spec
+# Deploy: Connect repo to Render, it will detect this file
+
+services:
+  # Excel Engine - .NET 8 LTS service for Excel manipulation
+  - type: web
+    name: excel-engine
+    runtime: docker
+    dockerfilePath: ./services/excel-engine/Dockerfile
+    dockerContext: .
+    region: oregon
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "5001"
+      - key: ASPNETCORE_URLS
+        value: http://0.0.0.0:5001
+      # Backblaze B2 Native API - set in Render dashboard
+      - key: B2_KEY_ID
+        sync: false
+      - key: B2_APPLICATION_KEY
+        sync: false
+      - key: B2_BUCKET
+        sync: false
+      - key: B2_BUCKET_ID
+        sync: false
+      - key: B2_DOWNLOAD_URL
+        sync: false
+      - key: B2_AUTH_CACHE_TTL_SECONDS
+        value: "3600"
+      - key: B2_DOWNLOAD_AUTH_TTL_SECONDS
+        value: "3600"
+      # EPPlus license
+      - key: EPPlus__ExcelPackage__LicenseContext
+        value: NonCommercial
+
+  # MCP Server - Node.js 20 MCP protocol server
+  - type: web
+    name: mcp-server
+    runtime: docker
+    dockerfilePath: ./services/mcp-server/Dockerfile
+    dockerContext: .
+    region: oregon
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: NODE_ENV
+        value: production
+      # Excel Engine internal URL (Render service-to-service)
+      - key: EXCEL_ENGINE_BASE_URL
+        fromService:
+          name: excel-engine
+          type: web
+          property: hostport
+      # Widget URL (Vercel) - set after deploying widget
+      - key: WIDGET_PUBLIC_URL
+        sync: false
+      # B2 download URL for CSP (set to match Excel Engine's B2_DOWNLOAD_URL)
+      - key: B2_DOWNLOAD_URL
+        sync: false

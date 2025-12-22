@@ -1,0 +1,480 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gpc-app.local/schemas/ind_acq_v1.input.schema.json",
+  "title": "IND_ACQ_V1 Contract - Named Inputs",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "deal", "acquisition", "operating", "rent_roll", "debt", "exit"],
+  "properties": {
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_version", "template_id"],
+      "properties": {
+        "contract_version": { "type": "string", "const": "IND_ACQ_V1" },
+        "template_id": { "type": "string", "const": "IND_ACQ" },
+        "template_version_target": {
+          "type": "string",
+          "description": "Optional: template semver the payload expects (e.g., 1.0.0)."
+        },
+        "request_id": { "type": "string" },
+        "currency": { "type": "string", "default": "USD" }
+      }
+    },
+
+    "deal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_name", "city", "state", "analysis_start_date", "hold_period_months", "gross_sf", "net_sf"],
+      "properties": {
+        "project_name": { "type": "string", "minLength": 1 },
+        "city": { "type": "string", "minLength": 1 },
+        "state": { "type": "string", "minLength": 2, "maxLength": 2 },
+        "analysis_start_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Model start date (month 0)."
+        },
+        "hold_period_months": { "type": "integer", "minimum": 1, "maximum": 600 },
+        "gross_sf": { "type": "number", "minimum": 0 },
+        "net_sf": { "type": "number", "minimum": 0 },
+        "stabilized_month": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600,
+          "description": "Optional; if omitted, template derives stabilization."
+        }
+      }
+    },
+
+    "acquisition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["purchase_price", "closing_cost_pct"],
+      "properties": {
+        "purchase_price": { "type": "number", "minimum": 0 },
+        "closing_cost_pct": { "type": "number", "minimum": 0, "maximum": 0.2 },
+        "acquisition_fee_pct": { "type": "number", "minimum": 0, "maximum": 0.1 },
+        "legal_costs": { "type": "number", "minimum": 0 },
+        "other_financing_fees": { "type": "number", "minimum": 0 }
+      }
+    },
+
+    "operating": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vacancy_pct", "credit_loss_pct", "inflation", "expenses"],
+      "properties": {
+        "vacancy_pct": { "type": "number", "minimum": 0, "maximum": 0.5 },
+        "credit_loss_pct": { "type": "number", "minimum": 0, "maximum": 0.2 },
+
+        "inflation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rent", "expenses", "taxes"],
+          "properties": {
+            "rent": { "type": "number", "minimum": -0.1, "maximum": 0.2 },
+            "expenses": { "type": "number", "minimum": -0.1, "maximum": 0.2 },
+            "taxes": { "type": "number", "minimum": -0.1, "maximum": 0.2 }
+          }
+        },
+
+        "other_income": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "amount_per_nsf_annual"],
+            "properties": {
+              "name": { "type": "string" },
+              "amount_per_nsf_annual": { "type": "number" }
+            }
+          },
+          "description": "Optional other income lines (annual, $/NSF)."
+        },
+
+        "expenses": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["management_fee_pct_egi", "fixed_annual", "recoveries"],
+          "properties": {
+            "management_fee_pct_egi": { "type": "number", "minimum": 0, "maximum": 0.1 },
+
+            "fixed_annual": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "insurance": { "type": "number", "minimum": 0 },
+                "utilities": { "type": "number", "minimum": 0 },
+                "repairs_maintenance": { "type": "number", "minimum": 0 },
+                "security": { "type": "number", "minimum": 0 },
+                "property_taxes": { "type": "number", "minimum": 0 },
+                "other_expense_1": { "type": "number", "minimum": 0 }
+              }
+            },
+
+            "recoveries": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["mode"],
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "enum": ["NNN", "MOD_GROSS", "GROSS"],
+                  "description": "Expense recovery mode."
+                }
+              }
+            },
+
+            "capex_reserves_per_nsf_annual": { "type": "number", "minimum": 0 },
+            "other_expenses_per_nsf_annual": {
+              "type": "array",
+              "maxItems": 5,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "amount_per_nsf_annual"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "amount_per_nsf_annual": { "type": "number" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "taxes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "assessment_pct": { "type": "number", "minimum": 0, "maximum": 1.5, "default": 1.0 },
+        "assessed_value_override": { "type": "number", "minimum": 0 },
+        "millage_rates": {
+          "type": "object",
+          "additionalProperties": { "type": "number", "minimum": 0, "maximum": 0.2 },
+          "description": "Keys like county, city, school, etc. (expressed as decimals, not percent)."
+        },
+        "include_renovation_in_assessment": { "type": "boolean", "default": false }
+      }
+    },
+
+    "rent_roll": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tenants_in_place"],
+      "properties": {
+        "defaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "lease_type": { "type": "string", "enum": ["NNN", "MOD_GROSS", "GROSS"] },
+            "annual_bump_pct": { "type": "number", "minimum": -0.1, "maximum": 0.2 },
+            "downtime_months": { "type": "integer", "minimum": 0, "maximum": 60 },
+            "free_rent_months": { "type": "integer", "minimum": 0, "maximum": 24 },
+            "ti": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "mode": { "type": "string", "enum": ["PER_SF", "FIXED"] },
+                "value": { "type": "number", "minimum": 0 }
+              }
+            },
+            "lc": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "mode": { "type": "string", "enum": ["PCT_RENT", "PER_SF", "FIXED"] },
+                "value": { "type": "number", "minimum": 0 }
+              }
+            }
+          }
+        },
+
+        "tenants_in_place": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["tenant_name", "sf", "lease_start", "lease_end", "current_rent_psf_annual"],
+            "properties": {
+              "tenant_name": { "type": "string" },
+              "sf": { "type": "number", "minimum": 0 },
+              "lease_start": { "type": "string", "format": "date" },
+              "lease_end": { "type": "string", "format": "date" },
+              "current_rent_psf_annual": { "type": "number", "minimum": 0 },
+              "annual_bump_pct": { "type": "number", "minimum": -0.1, "maximum": 0.2 },
+              "lease_type": { "type": "string", "enum": ["NNN", "MOD_GROSS", "GROSS"] },
+              "stop_amount_annual": { "type": "number", "minimum": 0 },
+              "free_rent_months": { "type": "integer", "minimum": 0, "maximum": 24 },
+
+              "ti": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "mode": { "type": "string", "enum": ["PER_SF", "FIXED"] },
+                  "value": { "type": "number", "minimum": 0 }
+                }
+              },
+
+              "lc": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "mode": { "type": "string", "enum": ["PCT_RENT", "PER_SF", "FIXED"] },
+                  "value": { "type": "number", "minimum": 0 }
+                }
+              },
+
+              "comments": { "type": "string" }
+            }
+          }
+        },
+
+        "market_rollover": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["tenant_name", "market_rent_psf_annual", "lease_start", "lease_end"],
+            "properties": {
+              "tenant_name": { "type": "string" },
+              "market_rent_psf_annual": { "type": "number", "minimum": 0 },
+              "annual_bump_pct": { "type": "number", "minimum": -0.1, "maximum": 0.2 },
+              "lease_start": { "type": "string", "format": "date" },
+              "lease_end": { "type": "string", "format": "date" },
+              "lease_type": { "type": "string", "enum": ["NNN", "MOD_GROSS", "GROSS"] },
+              "stop_amount_annual": { "type": "number", "minimum": 0 },
+              "free_rent_months": { "type": "integer", "minimum": 0, "maximum": 24 },
+              "downtime_months": { "type": "integer", "minimum": 0, "maximum": 60 },
+
+              "ti": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "mode": { "type": "string", "enum": ["PER_SF", "FIXED"] },
+                  "value": { "type": "number", "minimum": 0 }
+                }
+              },
+
+              "lc": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "mode": { "type": "string", "enum": ["PCT_RENT", "PER_SF", "FIXED"] },
+                  "value": { "type": "number", "minimum": 0 }
+                }
+              }
+            }
+          },
+          "description": "Optional future/rollover lease terms (downtime + re-leasing economics)."
+        }
+      }
+    },
+
+    "capex_and_reno": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enable_renovation_budget": { "type": "boolean", "default": false },
+        "preliminary_hard_costs_per_nsf": { "type": "number", "minimum": 0 },
+        "preliminary_soft_costs_per_nsf": { "type": "number", "minimum": 0 },
+        "hard_cost_contingency_pct": { "type": "number", "minimum": 0, "maximum": 0.3 },
+        "soft_cost_contingency_pct": { "type": "number", "minimum": 0, "maximum": 0.3 },
+        "schedule": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "start_date": { "type": "string", "format": "date" },
+            "duration_months": { "type": "integer", "minimum": 0, "maximum": 120 }
+          }
+        },
+        "line_items": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["category", "amount", "start_date", "duration_months"],
+            "properties": {
+              "category": { "type": "string" },
+              "amount": { "type": "number", "minimum": 0 },
+              "mode": { "type": "string", "enum": ["FIXED", "PER_NSF", "PER_GSF"], "default": "FIXED" },
+              "start_date": { "type": "string", "format": "date" },
+              "duration_months": { "type": "integer", "minimum": 0, "maximum": 120 }
+            }
+          }
+        }
+      }
+    },
+
+    "debt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["acquisition_loan"],
+      "properties": {
+        "acquisition_loan": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "ltv_max", "amort_years", "rate", "origination_fee_pct"],
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "ltv_max": { "type": "number", "minimum": 0, "maximum": 0.9 },
+            "dscr_min": { "type": "number", "minimum": 0, "maximum": 5 },
+            "amort_years": { "type": "integer", "minimum": 1, "maximum": 40 },
+            "io_months": { "type": "integer", "minimum": 0, "maximum": 120 },
+            "term_months": { "type": "integer", "minimum": 1, "maximum": 600 },
+            "origination_fee_pct": { "type": "number", "minimum": 0, "maximum": 0.05 },
+            "exit_fee_pct": { "type": "number", "minimum": 0, "maximum": 0.05 },
+
+            "rate": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type"],
+              "properties": {
+                "type": { "type": "string", "enum": ["FIXED", "SOFR_SPREAD"] },
+                "fixed_rate": { "type": "number", "minimum": 0, "maximum": 0.25 },
+                "sofr_spread": { "type": "number", "minimum": 0, "maximum": 0.25 },
+                "sofr_floor": { "type": "number", "minimum": 0, "maximum": 0.25 },
+                "sofr_cap": { "type": "number", "minimum": 0, "maximum": 0.5 }
+              }
+            },
+
+            "funding": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "fund_renovation_pct": { "type": "number", "minimum": 0, "maximum": 1 },
+                "fund_ti_lc_pct": { "type": "number", "minimum": 0, "maximum": 1 },
+                "fund_capex_pct": { "type": "number", "minimum": 0, "maximum": 1 },
+                "ti_lc_holdback_amount": { "type": "number", "minimum": 0 }
+              }
+            }
+          }
+        },
+
+        "refi_loan": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "start_month": { "type": "integer", "minimum": 0, "maximum": 600 },
+            "ltv": { "type": "number", "minimum": 0, "maximum": 0.9 },
+            "cap_rate_for_ltv": { "type": "number", "minimum": 0.01, "maximum": 0.2 },
+            "amort_years": { "type": "integer", "minimum": 1, "maximum": 40 },
+            "io_months": { "type": "integer", "minimum": 0, "maximum": 120 },
+            "origination_fee_pct": { "type": "number", "minimum": 0, "maximum": 0.05 },
+            "exit_fee_pct": { "type": "number", "minimum": 0, "maximum": 0.05 },
+            "rate": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type"],
+              "properties": {
+                "type": { "type": "string", "enum": ["FIXED", "SOFR_SPREAD"] },
+                "fixed_rate": { "type": "number", "minimum": 0, "maximum": 0.25 },
+                "sofr_spread": { "type": "number", "minimum": 0, "maximum": 0.25 },
+                "sofr_floor": { "type": "number", "minimum": 0, "maximum": 0.25 },
+                "sofr_cap": { "type": "number", "minimum": 0, "maximum": 0.5 }
+              }
+            },
+            "fund_ti_lc_pct": { "type": "number", "minimum": 0, "maximum": 1 },
+            "fund_capex_pct": { "type": "number", "minimum": 0, "maximum": 1 },
+            "ti_lc_holdback_amount": { "type": "number", "minimum": 0 }
+          }
+        },
+
+        "mezzanine": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "loan_amount": { "type": "number", "minimum": 0 },
+            "term_months": { "type": "integer", "minimum": 1, "maximum": 600 },
+            "origination_fee_pct": { "type": "number", "minimum": 0, "maximum": 0.1 },
+            "rate": { "type": "number", "minimum": 0, "maximum": 0.5 }
+          }
+        }
+      }
+    },
+
+    "exit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exit_month", "exit_cap_rate", "sale_cost_pct"],
+      "properties": {
+        "exit_month": { "type": "integer", "minimum": 1, "maximum": 600 },
+        "exit_cap_rate": { "type": "number", "minimum": 0.01, "maximum": 0.2 },
+        "sale_cost_pct": { "type": "number", "minimum": 0, "maximum": 0.1 },
+        "forward_noi_months": { "type": "integer", "minimum": 0, "maximum": 24, "default": 12 }
+      }
+    },
+
+    "waterfall": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lp_equity_pct": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.9 },
+        "gp_equity_pct": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.1 },
+        "tiers": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["hurdle_irr", "promote_pct"],
+            "properties": {
+              "hurdle_irr": { "type": "number", "minimum": 0, "maximum": 1 },
+              "promote_pct": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        }
+      }
+    },
+
+    "sensitivities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "exit_cap_grid": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["low", "high", "step"],
+          "properties": {
+            "low": { "type": "number", "minimum": 0.01, "maximum": 0.25 },
+            "high": { "type": "number", "minimum": 0.01, "maximum": 0.25 },
+            "step": { "type": "number", "minimum": 0.0001, "maximum": 0.05 }
+          }
+        },
+        "exit_months": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1, "maximum": 600 },
+          "maxItems": 12
+        }
+      }
+    },
+
+    "mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "named_ranges": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "tables": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}
