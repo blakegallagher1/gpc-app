@@ -1,0 +1,60 @@
+{
+  "_comment": "Expected outputs for golden PDF fidelity test - matches case_001 outputs",
+  "_tolerance_notes": {
+    "irr": "±1% (100bps) tolerance for IRR",
+    "multiples": "±0.1x tolerance for equity multiples"
+  },
+  "headline_metrics": {
+    "unlevered_irr": {
+      "value": 0.12,
+      "tolerance_abs": 0.01,
+      "description": "Unlevered IRR (12.0% from regression)"
+    },
+    "levered_irr": {
+      "value": 0.136,
+      "tolerance_abs": 0.01,
+      "description": "Levered IRR (13.6% from regression)"
+    },
+    "investor_irr": {
+      "value": 0.12,
+      "tolerance_abs": 0.02,
+      "description": "Investor IRR (approx)"
+    },
+    "unlevered_multiple": {
+      "value": 1.58,
+      "tolerance_abs": 0.1,
+      "description": "Unlevered equity multiple (1.58x from model)"
+    },
+    "levered_multiple": {
+      "value": 1.29,
+      "tolerance_abs": 0.1,
+      "description": "Levered equity multiple (1.29x from regression)"
+    },
+    "investor_multiple": {
+      "value": 1.25,
+      "tolerance_abs": 0.1,
+      "description": "Investor multiple"
+    }
+  },
+  "sanity_checks": {
+    "checks_status": {
+      "value": "OK",
+      "description": "Error check status must be OK"
+    },
+    "error_count": {
+      "value": 0,
+      "description": "No errors in workbook"
+    }
+  },
+  "layout_invariants": {
+    "sheets_required": [
+      "Assumptions",
+      "Rent Roll",
+      "Monthly CF",
+      "Annual Cashflow",
+      "Investment Summary"
+    ],
+    "print_ready": true,
+    "freeze_panes_required": true
+  }
+}

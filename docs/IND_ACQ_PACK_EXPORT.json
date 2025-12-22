@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "IND_ACQ Pack Export Configuration",
+  "description": "Defines the investor pack PDF export: sheet order, visibility, and page expectations",
+  "version": "1.0.0",
+  "template_id": "IND_ACQ",
+
+  "pack_sheets": [
+    {
+      "name": "Investment Summary",
+      "order": 1,
+      "expected_pages": 1,
+      "orientation": "portrait",
+      "description": "Executive summary with key metrics, returns, and deal highlights"
+    },
+    {
+      "name": "Returns Summary",
+      "order": 2,
+      "expected_pages": 1,
+      "orientation": "portrait",
+      "description": "IRR, equity multiples, and sensitivity analysis"
+    },
+    {
+      "name": "Error Check",
+      "order": 3,
+      "expected_pages": 1,
+      "orientation": "portrait",
+      "description": "Model validation checks and balancing tests"
+    },
+    {
+      "name": "Model Outputs",
+      "order": 4,
+      "expected_pages": 1,
+      "orientation": "portrait",
+      "description": "Full outputs matrix with all calculated values"
+    },
+    {
+      "name": "Annual CF",
+      "order": 5,
+      "expected_pages": 1,
+      "orientation": "landscape",
+      "description": "Annual cash flow summary (NOI, debt service, distributions)"
+    },
+    {
+      "name": "Assumptions",
+      "order": 6,
+      "expected_pages": 1,
+      "orientation": "portrait",
+      "description": "Deal assumptions and input parameters"
+    },
+    {
+      "name": "Rent Roll",
+      "order": 7,
+      "expected_pages": 1,
+      "orientation": "landscape",
+      "description": "Tenant schedule with rent escalations"
+    },
+    {
+      "name": "Renovation Budget",
+      "order": 8,
+      "expected_pages": 1,
+      "orientation": "portrait",
+      "description": "Capital expenditure and renovation line items"
+    },
+    {
+      "name": "Monthly CF",
+      "order": 9,
+      "expected_pages": 5,
+      "orientation": "landscape",
+      "description": "Detailed monthly cash flows (60 months = ~5 pages)"
+    }
+  ],
+
+  "excluded_sheets": [
+    {
+      "name": "_TEMPLATE_META",
+      "reason": "Internal template metadata, not for investor presentation"
+    }
+  ],
+
+  "expected_total_pages": 13,
+  "page_tolerance": 2,
+
+  "print_settings": {
+    "paper_size": "Letter",
+    "fit_to_page": true,
+    "margins": {
+      "top": 0.5,
+      "bottom": 0.5,
+      "left": 0.5,
+      "right": 0.5
+    }
+  },
+
+  "notes": [
+    "Page counts are estimates based on default print settings",
+    "Monthly CF pages depend on hold period (60 months = ~5 pages at 12 cols/page)",
+    "Reference PDF (Industrial+Acquisition+Assumptions.pdf) is from Top Shelf Models with different sheets",
+    "This pack config defines OUR IND_ACQ template's investor deliverable"
+  ]
+}

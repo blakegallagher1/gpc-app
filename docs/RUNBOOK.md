@@ -604,3 +604,143 @@ If you were previously using S3-compatible API (S3_ENDPOINT, S3_ACCESS_KEY_ID, e
 **Why B2 Native?** The S3-compatible API had persistent "SignatureDoesNotMatch" errors
 due to AWS SDK signature calculation incompatibilities. The B2 native API uses simple
 HTTP Basic auth and works reliably.
+
+---
+
+## Golden PDF Fidelity Testing
+
+The golden PDF fidelity test ensures generated XLSX files match the reference PDF layout and metrics.
+
+### Reference PDF
+
+- **Source**: `Industrial+Acquisition+Assumptions.pdf` (Top Shelf Models)
+- **Location**: Repository root
+- **Key Metrics**: Unlevered IRR 12.9%, Levered IRR 19.9%, Investor IRR 18.0%
+
+### Pack Export Configuration
+
+The investor pack export is defined in `docs/IND_ACQ_PACK_EXPORT.json`. This config specifies:
+- Which sheets to include in the investor PDF
+- Sheet ordering for the pack
+- Expected page counts per sheet
+- Print orientation settings
+
+### IND_ACQ Pack Sheets (13 pages expected)
+
+| Order | Sheet Name | Pages | Orientation | Content |
+|-------|------------|-------|-------------|---------|
+| 1 | Investment Summary | 1 | Portrait | Key metrics, returns, deal highlights |
+| 2 | Returns Summary | 1 | Portrait | IRR, multiples, sensitivity analysis |
+| 3 | Error Check | 1 | Portrait | Model validation checks |
+| 4 | Model Outputs | 1 | Portrait | Full outputs matrix |
+| 5 | Annual CF | 1 | Landscape | Annual cash flow summary |
+| 6 | Assumptions | 1 | Portrait | Deal assumptions and inputs |
+| 7 | Rent Roll | 1 | Landscape | Tenant schedule with escalations |
+| 8 | Renovation Budget | 1 | Portrait | Capex and renovation items |
+| 9 | Monthly CF | 5 | Landscape | 60-month detailed cash flows |
+
+**Excluded Sheets:**
+- `_TEMPLATE_META` - Internal template metadata
+
+> **Note**: The reference PDF (`Industrial+Acquisition+Assumptions.pdf`) is from Top Shelf Models
+> and has 22 pages with additional sheets (Waterfall, Sale Comps, Lease Comps, SOFR, etc.)
+> that are not part of our IND_ACQ template. Pack comparison uses our template's sheets.
+
+### Layout Invariants
+
+The Excel engine validates these layout invariants for PDF fidelity:
+
+1. **Required Sheets**: Assumptions, Rent Roll, Monthly CF, Annual Cashflow, Investment Summary
+2. **Print Areas**: Each sheet must have print area defined
+3. **Freeze Panes**: Data sheets (Monthly CF, Rent Roll, Annual Cashflow) must have frozen headers
+4. **Page Setup**:
+   - Margins: 0.25" to 1.5" (reasonable range)
+   - Paper Size: Letter or A4
+   - Scaling: FitToPage or 50-100% scale
+   - Orientation: Set appropriately per sheet
+
+### Running Golden PDF Tests
+
+```bash
+# Requires LibreOffice (for XLSX→PDF) and ImageMagick (for pixel diff)
+brew install --cask libreoffice
+brew install imagemagick
+
+# Run the golden PDF fidelity test (local mode)
+./scripts/golden-pdf-compare.sh
+
+# Run against staging (B2 configured)
+MCP_URL=https://mcp-server-xxx.onrender.com ./scripts/golden-pdf-compare.sh
+
+# Options:
+./scripts/golden-pdf-compare.sh --skip-pixel-diff    # Skip visual comparison
+./scripts/golden-pdf-compare.sh --require-pdf        # Fail if PDF cannot be generated
+./scripts/golden-pdf-compare.sh --require-pagecount  # Fail if page count doesn't match
+./scripts/golden-pdf-compare.sh --full-workbook      # Export all sheets (not pack only)
+```
+
+### Pack Export Workflow
+
+The test generates two PDFs:
+1. **Full workbook PDF** - All visible sheets (for debugging)
+2. **Pack PDF** - Only investor pack sheets per `IND_ACQ_PACK_EXPORT.json`
+
+Page count validation uses the pack PDF (expected: 13 pages ±2).
+
+### Test Files
+
+| File | Description |
+|------|-------------|
+| `testcases/ind_acq/golden_pdf_case.inputs.json` | Golden testcase matching reference PDF |
+| `testcases/ind_acq/golden_pdf_case.expected.json` | Expected outputs with tolerances |
+| `scripts/golden-pdf-compare.sh` | Test runner script |
+
+### Expected Metrics and Tolerances
+
+| Metric | Expected | Tolerance |
+|--------|----------|-----------|
+| Unlevered IRR | 12.9% | ±0.5% |
+| Levered IRR | 19.9% | ±0.5% |
+| Investor IRR | 18.0% | ±0.5% |
+| Unlevered Multiple | 1.7x | ±0.05x |
+| Levered Multiple | 2.3x | ±0.05x |
+| Acquisition Price | $12,360,000 | exact |
+| Renovation Costs | $6,531,000 | ±1% |
+
+### Output Keys
+
+The Excel engine outputs layout status:
+
+```json
+{
+  "out.layout.status": "OK",
+  "out.layout.warning_count": 0,
+  "out.layout.warnings": ""
+}
+```
+
+When layout issues are detected:
+
+```json
+{
+  "out.layout.status": "WARNINGS",
+  "out.layout.warning_count": 3,
+  "out.layout.warnings": "Missing print area on sheet: Assumptions; Missing freeze panes on sheet: Monthly CF; ..."
+}
+```
+
+### CI Integration
+
+For CI pipelines, the golden PDF test can be run in metrics-only mode:
+
+```bash
+# Skip pixel diff (no LibreOffice required)
+./scripts/golden-pdf-compare.sh --skip-pixel-diff
+```
+
+This validates:
+- Model generates successfully
+- Output metrics are within tolerance
+- Layout invariants pass (sheets exist, print areas defined)
+
+Full pixel diff testing is recommended for release validation.
