@@ -65,14 +65,14 @@ if (process.env.WIDGET_URL && !process.env.WIDGET_PUBLIC_URL) {
 
 // Tool input schemas (Zod for runtime validation)
 const validateInputsInputSchema = z.object({
-  inputs: z.unknown(),
+  inputs: z.record(z.unknown()),
 });
 
 const buildModelInputSchema = z.object({
-  inputs: z.unknown().optional(),
+  inputs: z.record(z.unknown()).optional(),
   natural_language: z.string().optional(),
   mode: z.enum(["extract_only", "run"]).optional(),
-});
+}).passthrough();
 
 const getRunStatusInputSchema = z.object({
   job_id: z.string().min(1),
