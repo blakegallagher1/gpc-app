@@ -600,6 +600,7 @@ static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, 
     }
     catch (Exception ex)
     {
+        LogStructured("ERROR", "Job failed", new { jobId, error = ex.Message, stackTrace = ex.StackTrace });
         job.Error = ex.Message;
         job.Status = JobStatus.Failed;
     }
@@ -889,9 +890,21 @@ static JsonElement GetArrayElementAt(JsonElement arrayElement, int index)
 
 static object? ConvertScalar(JsonElement element, string path)
 {
+    if (element.ValueKind == JsonValueKind.String)
+    {
+        var str = element.GetString();
+        // Convert ISO 8601 date strings to DateTime for Excel compatibility
+        // Matches patterns like "2025-01-01" or "2025-12-31"
+        if (str != null && str.Length == 10 && str[4] == '-' && str[7] == '-' &&
+            DateTime.TryParseExact(str, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var date))
+        {
+            return date;
+        }
+        return str;
+    }
+
     return element.ValueKind switch
     {
-        JsonValueKind.String => element.GetString(),
         JsonValueKind.Number => element.TryGetInt64(out var longValue) ? longValue : element.GetDouble(),
         JsonValueKind.True => true,
         JsonValueKind.False => false,
