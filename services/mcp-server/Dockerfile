@@ -5,34 +5,28 @@ WORKDIR /app
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Copy workspace config and lockfile first for cache efficiency
-COPY pnpm-workspace.yaml ./
-COPY pnpm-lock.yaml* ./
-COPY package.json ./
+# Copy only the service package.json (not workspace mode for simpler deps)
+COPY services/mcp-server/package.json ./
 
-# Create service directory structure
-RUN mkdir -p services/mcp-server
-
-# Copy service package.json
-COPY services/mcp-server/package.json ./services/mcp-server/
-
-# Install dependencies (workspace mode)
-RUN pnpm install --frozen-lockfile --filter @gpc/mcp-server... || pnpm install --filter @gpc/mcp-server...
+# Install dependencies directly (no workspace)
+RUN pnpm install --prod=false
 
 # Copy source
-COPY services/mcp-server/ ./services/mcp-server/
+COPY services/mcp-server/src ./src
+COPY services/mcp-server/tsconfig.json ./
 
 # Build TypeScript
-WORKDIR /app/services/mcp-server
 RUN pnpm build
 
 FROM node:20-alpine AS final
 WORKDIR /app
 
-# Copy package files and built code from the service directory
-COPY --from=build /app/services/mcp-server/package.json ./
-COPY --from=build /app/services/mcp-server/node_modules ./node_modules
-COPY --from=build /app/services/mcp-server/dist ./dist
+# Copy package.json and install production deps only
+COPY --from=build /app/package.json ./
+RUN corepack enable && corepack prepare pnpm@latest --activate && pnpm install --prod
+
+# Copy built code
+COPY --from=build /app/dist ./dist
 
 # Copy contracts from repo
 COPY contracts ./contracts

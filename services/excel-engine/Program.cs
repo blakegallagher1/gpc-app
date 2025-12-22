@@ -357,11 +357,11 @@ app.MapPost("/v1/ind-acq/build", async (HttpRequest request) =>
     // Check concurrency limit
     if (!await jobSemaphore.WaitAsync(0))
     {
-        return Results.StatusCode(503, new
+        return Results.Json(new
         {
             error = "server_busy",
             message = $"Maximum concurrent jobs ({maxConcurrentJobs}) reached. Please try again later."
-        });
+        }, statusCode: 503);
     }
 
     var jobId = Guid.NewGuid().ToString("N");
@@ -1654,7 +1654,7 @@ sealed class B2UploadResult
 // Domain Models
 // ============================================================================
 
-sealed class BuildRequest
+sealed record BuildRequest
 {
     public string? TemplatePath { get; init; }
     public JsonElement Inputs { get; init; }
