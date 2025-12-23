@@ -406,6 +406,7 @@ app.Run();
 static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, B2Client? b2Client)
 {
     job.Status = JobStatus.Running;
+    LogStructured("INFO", "Job starting", new { jobId, templatePath = request.TemplatePath });
 
     try
     {
@@ -414,6 +415,7 @@ static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, 
         {
             throw new InvalidOperationException($"Template file not found: {templatePath}");
         }
+        LogStructured("INFO", "Template resolved", new { jobId, templatePath });
 
         var mapping = request.Mapping;
         if (!mapping.TryGetProperty("named_ranges", out var namedRangesElement))
@@ -483,7 +485,10 @@ static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, 
             }
         }
 
+        LogStructured("INFO", "Named ranges written", new { jobId });
+
         WriteRentRollTables(request.Inputs, package, tablesElement);
+        LogStructured("INFO", "Rent roll tables written", new { jobId });
 
         // Clear renovation budget costs - template has pre-filled values that don't apply to all deals
         // For stabilized acquisitions (IND_ACQ), renovation costs should typically be zero
@@ -512,7 +517,17 @@ static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, 
             assumptionsSheet.Cells["F30"].Formula = "SUM(OFFSET('Monthly CF'!$D$56,0,$E$28-11,1,12))*(1+infl_other_revenue)";
         }
 
-        package.Workbook.Calculate();
+        LogStructured("INFO", "Starting workbook calculation", new { jobId });
+        try
+        {
+            package.Workbook.Calculate();
+        }
+        catch (Exception ex)
+        {
+            LogStructured("ERROR", "Workbook calculation failed", new { jobId, error = ex.Message, stackTrace = ex.StackTrace });
+            throw;
+        }
+        LogStructured("INFO", "Workbook calculation complete", new { jobId });
 
         // Validate layout invariants for PDF fidelity
         var layoutWarnings = ValidateLayoutInvariants(package);
