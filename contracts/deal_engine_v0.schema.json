@@ -520,6 +520,22 @@
           }
         },
 
+        "returns": {
+          "type": "object",
+          "description": "Return assumptions (discount rates).",
+          "additionalProperties": false,
+          "properties": {
+            "discount_rate_unlevered": {
+              "type": "number",
+              "description": "Unlevered discount rate for NPV (decimal)."
+            },
+            "discount_rate_levered": {
+              "type": "number",
+              "description": "Levered discount rate for NPV (decimal)."
+            }
+          }
+        },
+
         "waterfall": {
           "type": "object",
           "description": "Equity waterfall / promote assumptions.",

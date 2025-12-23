@@ -23,6 +23,10 @@ export interface DealMetrics {
   lpIrr?: number;
   gpIrr?: number;
   equityMultiple?: number;
+  npvUnlevered?: number;
+  npvLevered?: number;
+  discountRateUnlevered?: number;
+  discountRateLevered?: number;
   goingInCapRate?: number;
   exitCapRate?: number;
   averageDscr?: number;

@@ -27,6 +27,7 @@ export interface ModulesInput {
   operating?: OperatingInput;
   debt?: DebtInput;
   exit: ExitInput;
+  returns?: ReturnsInput;
   waterfall?: WaterfallInput;
   scenario?: ScenarioInput;
 }
@@ -165,6 +166,11 @@ export interface ExitInput {
   exit_month: number;
   sale_cost_pct: number;
   forward_noi_months?: number;
+}
+
+export interface ReturnsInput {
+  discount_rate_unlevered?: number;
+  discount_rate_levered?: number;
 }
 
 export interface WaterfallTierInput {

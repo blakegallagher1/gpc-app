@@ -417,6 +417,11 @@ Use this section to log progress during work sessions.
 - OperatingModule now applies annual reserves growth in monthly expenses
 - Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/types/inputs.ts, services/deal-engine/src/modules/operating/operating-module.ts
 - Build: pnpm --filter @gpc/deal-engine build && test; pnpm --filter @gpc/mcp-server build
+2025-12-23 02:23 - [Task2] Added discount rate inputs and NPV calculations
+- Added returns discount rates to schema and inputs
+- ExitModule now computes NPV metrics when discount rates provided
+- Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/types/inputs.ts, services/deal-engine/src/modules/exit/exit-module.ts, services/deal-engine/src/types/context.ts, services/deal-engine/src/index.ts
+- Build: pnpm --filter @gpc/deal-engine build && test; pnpm --filter @gpc/mcp-server build
 ```
 
 ---

@@ -1,5 +1,5 @@
 import { Series } from "../../core/series.js";
-import { irr } from "../../core/math-utils.js";
+import { irr, npv, annualToMonthly } from "../../core/math-utils.js";
 import { DealContext } from "../../types/context.js";
 import { ExitInput } from "../../types/inputs.js";
 import { Module, ModuleResult, ValidationResult } from "../../types/module.js";
@@ -179,6 +179,28 @@ export class ExitModule implements Module<ExitModuleOutputs> {
       leveredIrr = irr(leveredCashflows) * 12; // Annualize monthly IRR
     } catch {
       context.warnings.push("Could not calculate levered IRR");
+    }
+
+    const discountRateUnlevered = context.inputs.modules.returns?.discount_rate_unlevered;
+    if (discountRateUnlevered !== undefined) {
+      try {
+        const monthlyRate = annualToMonthly(discountRateUnlevered);
+        context.metrics.npvUnlevered = npv(monthlyRate, unleveredCashflows);
+        context.metrics.discountRateUnlevered = discountRateUnlevered;
+      } catch {
+        context.warnings.push("Could not calculate unlevered NPV");
+      }
+    }
+
+    const discountRateLevered = context.inputs.modules.returns?.discount_rate_levered;
+    if (discountRateLevered !== undefined) {
+      try {
+        const monthlyRate = annualToMonthly(discountRateLevered);
+        context.metrics.npvLevered = npv(monthlyRate, leveredCashflows);
+        context.metrics.discountRateLevered = discountRateLevered;
+      } catch {
+        context.warnings.push("Could not calculate levered NPV");
+      }
     }
 
     // Calculate equity multiple

@@ -33,6 +33,7 @@ export type {
   AcquisitionLoanInput,
   DebtInput,
   ExitInput,
+  ReturnsInput,
   WaterfallTierInput,
   WaterfallLpClassInput,
   WaterfallInput,
