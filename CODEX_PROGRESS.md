@@ -24,13 +24,13 @@ These items block "usable in ChatGPT without friction."
 ---
 
 ### A2. Widget Hardening Completion
-- [ ] Remove iframe usage - serve widget as direct Skybridge bundle
-- [ ] Verify CSP declared in resource `_meta["openai/widgetCSP"]`
-- [ ] Verify widget runs fully via `window.openai` APIs:
-  - [ ] `callTool()` for MCP tool invocation
-  - [ ] `setWidgetState()` for state persistence
-  - [ ] `openExternal()` for download links
-- [ ] Test widget in ChatGPT sandbox
+- [x] Remove iframe usage - serve widget as direct Skybridge bundle
+- [x] Verify CSP declared in resource `_meta["openai/widgetCSP"]`
+- [x] Verify widget runs fully via `window.openai` APIs:
+  - [x] `callTool()` for MCP tool invocation
+  - [x] `setWidgetState()` for state persistence
+  - [x] `openExternal()` for download links
+- [!] Test widget in ChatGPT sandbox
 
 **Files:**
 - `web/skybridge/` (widget source)
@@ -356,6 +356,11 @@ Use this section to log progress during work sessions.
 - Confirmed validate_inputs is private without outputTemplate; public tools retain template
 - File: services/mcp-server/src/index.ts
 - Note: ChatGPT UI verification still pending (needs manual sandbox check)
+2025-12-23 01:55 - [A2] Verified widget hardening requirements
+- Confirmed skybridge bundle is served directly (no nested iframe) and widgetCSP metadata present
+- Verified window.openai callTool/setWidgetState/openExternal usage in widget client
+- Files: services/mcp-server/src/index.ts, web/widget/src/lib/mcp-client.ts, web/widget/src/components/ResultsView.tsx
+- Blocker: ChatGPT sandbox test still required
 ```
 
 ---
