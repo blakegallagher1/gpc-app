@@ -400,6 +400,15 @@ function createIndAcqServer() {
         }
       }
 
+      // Ensure rollover coverage for leases expiring before exit
+      const rolloverResult = ensureRolloverCoverage(mergedInputs);
+      mergedInputs = rolloverResult.inputs;
+      const rolloverWarnings = rolloverResult.warnings;
+
+      if (rolloverWarnings.length > 0) {
+        log.info("Auto-generated rollover entries", { requestId, warnings: rolloverWarnings });
+      }
+
       // If mode is extract_only, return the merged inputs without running
       if (mode === "extract_only") {
         // Validate to find any remaining missing fields
@@ -427,6 +436,7 @@ function createIndAcqServer() {
           inputs: mergedInputs,
           missing_fields: extractionMeta?.missing_fields ?? [],
           suggested_defaults: extractionMeta?.suggested_defaults ?? {},
+          ...(rolloverWarnings.length > 0 ? { rollover_notes: rolloverWarnings } : {}),
         });
       }
 
@@ -472,6 +482,7 @@ function createIndAcqServer() {
       return buildToolResponse({
         status: "started",
         job_id: payload.job_id,
+        ...(rolloverWarnings.length > 0 ? { rollover_notes: rolloverWarnings } : {}),
       });
     }
   );
@@ -926,15 +937,123 @@ function setNestedValue(obj: Record<string, unknown>, path: string, value: unkno
   current[parts[parts.length - 1]] = value;
 }
 
+// Auto-generate market_rollover entries when tenant leases expire before exit
+// This prevents $0 NOI at exit which causes model calculation failures
+function ensureRolloverCoverage(inputs: Record<string, unknown>): { inputs: Record<string, unknown>; warnings: string[] } {
+  const warnings: string[] = [];
+  const result = JSON.parse(JSON.stringify(inputs)) as Record<string, unknown>;
+
+  const deal = result.deal as Record<string, unknown> | undefined;
+  const rentRoll = result.rent_roll as Record<string, unknown> | undefined;
+  const exitConfig = result.exit as Record<string, unknown> | undefined;
+
+  if (!deal || !rentRoll || !exitConfig) {
+    return { inputs: result, warnings };
+  }
+
+  const analysisStartStr = deal.analysis_start_date as string | undefined;
+  const holdPeriodMonths = deal.hold_period_months as number | undefined;
+  const exitMonth = exitConfig.exit_month as number | undefined;
+
+  if (!analysisStartStr || !holdPeriodMonths) {
+    return { inputs: result, warnings };
+  }
+
+  // Parse analysis start date
+  const analysisStart = new Date(analysisStartStr);
+  if (isNaN(analysisStart.getTime())) {
+    return { inputs: result, warnings };
+  }
+
+  // Calculate exit date
+  const exitDate = new Date(analysisStart);
+  exitDate.setMonth(exitDate.getMonth() + (exitMonth ?? holdPeriodMonths));
+
+  const tenantsInPlace = rentRoll.tenants_in_place as Array<Record<string, unknown>> | undefined;
+  let marketRollover = rentRoll.market_rollover as Array<Record<string, unknown>> | undefined;
+
+  if (!tenantsInPlace || tenantsInPlace.length === 0) {
+    return { inputs: result, warnings };
+  }
+
+  if (!marketRollover) {
+    marketRollover = [];
+  }
+
+  // Check each tenant's lease expiry
+  for (const tenant of tenantsInPlace) {
+    const tenantName = tenant.tenant_name as string;
+    const leaseEndStr = tenant.lease_end as string | undefined;
+    const sf = tenant.sf as number;
+    const currentRent = tenant.current_rent_psf_annual as number;
+    const bumpPct = tenant.annual_bump_pct as number | undefined;
+    const leaseType = tenant.lease_type as string | undefined;
+
+    if (!leaseEndStr || !tenantName) continue;
+
+    const leaseEnd = new Date(leaseEndStr);
+    if (isNaN(leaseEnd.getTime())) continue;
+
+    // Check if lease expires before exit
+    if (leaseEnd < exitDate) {
+      // Check if rollover already exists for this tenant
+      const existingRollover = marketRollover.find(
+        (r) => (r.tenant_name as string)?.toLowerCase().includes(tenantName.toLowerCase())
+      );
+
+      if (!existingRollover) {
+        // Calculate rollover start (lease_end + 1 month downtime)
+        const rolloverStart = new Date(leaseEnd);
+        rolloverStart.setMonth(rolloverStart.getMonth() + 1);
+
+        // Rollover end is exit date + 12 months (to ensure forward NOI coverage)
+        const rolloverEnd = new Date(exitDate);
+        rolloverEnd.setMonth(rolloverEnd.getMonth() + 12);
+
+        // Estimate market rent at rollover (current rent with annual bumps to lease end)
+        const yearsToLeaseEnd = Math.max(0, (leaseEnd.getTime() - analysisStart.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+        const inflatedRent = currentRent * Math.pow(1 + (bumpPct ?? 0.03), yearsToLeaseEnd);
+        // Add 5% market bump for new lease
+        const marketRent = Math.round(inflatedRent * 1.05 * 100) / 100;
+
+        const rolloverEntry = {
+          tenant_name: `${tenantName} (Renewal)`,
+          sf: sf,
+          market_rent_psf_annual: marketRent,
+          annual_bump_pct: bumpPct ?? 0.03,
+          lease_start: rolloverStart.toISOString().split("T")[0],
+          lease_end: rolloverEnd.toISOString().split("T")[0],
+          lease_type: leaseType ?? "NNN",
+          downtime_months: 1,
+          free_rent_months: 0,
+        };
+
+        marketRollover.push(rolloverEntry);
+        warnings.push(
+          `Auto-generated rollover for ${tenantName}: lease expires ${leaseEndStr} before exit. ` +
+          `Assumed renewal at $${marketRent.toFixed(2)} PSF (market) with 1 month downtime.`
+        );
+      }
+    }
+  }
+
+  // Update rent_roll with rollover entries
+  if (marketRollover.length > 0) {
+    (result.rent_roll as Record<string, unknown>).market_rollover = marketRollover;
+  }
+
+  return { inputs: result, warnings };
+}
+
 type ValidationResult =
   | { status: "ok" }
   | { status: "invalid"; errors: { path: string; message: string }[] };
 
 type ToolResult =
   | ValidationResult
-  | { status: "needs_info"; inputs: Record<string, unknown>; missing_fields: { path: string; description: string }[]; suggested_defaults: Record<string, unknown> }
-  | { status: "ok"; inputs: Record<string, unknown>; missing_fields: { path: string; description: string }[]; suggested_defaults: Record<string, unknown> }
-  | { status: "started"; job_id: string }
+  | { status: "needs_info"; inputs: Record<string, unknown>; missing_fields: { path: string; description: string }[]; suggested_defaults: Record<string, unknown>; rollover_notes?: string[] }
+  | { status: "ok"; inputs: Record<string, unknown>; missing_fields: { path: string; description: string }[]; suggested_defaults: Record<string, unknown>; rollover_notes?: string[] }
+  | { status: "started"; job_id: string; rollover_notes?: string[] }
   | { status: "pending"; job_id: string }
   | { status: "running"; job_id: string }
   | { status: "complete"; job_id: string; outputs: Record<string, unknown>; file_path: string | null; download_url: string | null; download_url_expiry: string | null; warning?: string | null }
