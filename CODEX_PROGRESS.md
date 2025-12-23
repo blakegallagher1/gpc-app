@@ -462,6 +462,17 @@ Use this section to log progress during work sessions.
 - Added SQLite-backed job persistence (E1) and MCP rate limiting (E3)
 - Logged D1 as blocked due to missing template sheets; expanded PDF page mappings for D2
 - Files: services/excel-engine/Program.cs, services/excel-engine/excel-engine.csproj, services/mcp-server/src/index.ts, docs/IND_ACQ_REFERENCE_PAGE_MAP.json, CODEX_PROGRESS.md
+2025-12-23 15:29 - [Session] Schema + MCP UX + Excel mapping fixes
+- Added reserves/other_operating fields + returns section to schema
+- Eliminated needs_info loop via defaults + required-only gating
+- Fixed Excel mapping for expenses/reserves/debt funding and per-SF handling
+- Files: contracts/ind_acq_v1.input.schema.json, contracts/ind_acq_v1.output.mapping.json, services/mcp-server/src/index.ts, services/excel-engine/Program.cs
+2025-12-23 16:55 - [Session] Deal Engine v0 fixtures + validation + docs
+- Added 13 minimal fixtures for template_library_v1.json
+- Added AJV validation script and package.json runner
+- Added Deal Engine V0 contract and template library docs
+- Adjusted LoanV0 rate schema to satisfy AJV strictRequired
+- Files: testcases/deal_engine_v0/fixtures/*.json, scripts/validate-deal-engine-fixtures.mjs, package.json, docs/DEAL_ENGINE_V0_CONTRACT.md, docs/TEMPLATE_LIBRARY_V1.md, testcases/deal_engine_v0/README.md, contracts/deal_engine_v0.schema.json
 ```
 
 ---

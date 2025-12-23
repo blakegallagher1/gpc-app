@@ -392,11 +392,11 @@
           "allOf": [
             {
               "if": { "properties": { "type": { "const": "fixed" } } },
-              "then": { "required": ["rate"] }
+              "then": { "properties": { "rate": {} }, "required": ["rate"] }
             },
             {
               "if": { "properties": { "type": { "const": "floating" } } },
-              "then": { "required": ["index", "spread"] }
+              "then": { "properties": { "index": {}, "spread": {} }, "required": ["index", "spread"] }
             }
           ]
         },
