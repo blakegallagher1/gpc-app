@@ -46,15 +46,108 @@ function sign(value: number): -1 | 0 | 1 {
   return value > 0 ? 1 : -1;
 }
 
+function brentRoot(
+  f: (rate: number) => number,
+  a: number,
+  b: number,
+  tolerance: number,
+  maxIterations: number,
+): number {
+  let fa = f(a);
+  let fb = f(b);
+  if (fa === 0) return a;
+  if (fb === 0) return b;
+  if (sign(fa) === sign(fb)) {
+    throw new Error("Root must be bracketed for Brent's method");
+  }
+
+  let c = a;
+  let fc = fa;
+  let d = b - a;
+  let e = d;
+
+  for (let iter = 0; iter < maxIterations; iter += 1) {
+    if (sign(fb) === sign(fc)) {
+      c = a;
+      fc = fa;
+      d = b - a;
+      e = d;
+    }
+
+    if (Math.abs(fc) < Math.abs(fb)) {
+      a = b;
+      b = c;
+      c = a;
+      fa = fb;
+      fb = fc;
+      fc = fa;
+    }
+
+    const tol1 = 2 * Number.EPSILON * Math.abs(b) + tolerance;
+    const xm = (c - b) / 2;
+
+    if (Math.abs(xm) <= tol1 || fb === 0) {
+      return b;
+    }
+
+    if (Math.abs(e) >= tol1 && Math.abs(fa) > Math.abs(fb)) {
+      // Attempt inverse quadratic interpolation
+      let s = fb / fa;
+      let p: number;
+      let q: number;
+      if (a === c) {
+        p = 2 * xm * s;
+        q = 1 - s;
+      } else {
+        const q1 = fa / fc;
+        const r = fb / fc;
+        p = s * (2 * xm * q1 * (q1 - r) - (b - a) * (r - 1));
+        q = (q1 - 1) * (r - 1) * (s - 1);
+      }
+
+      if (p > 0) {
+        q = -q;
+      }
+      p = Math.abs(p);
+
+      const min1 = 3 * xm * q - Math.abs(tol1 * q);
+      const min2 = Math.abs(e * q);
+      if (2 * p < (min1 < min2 ? min1 : min2)) {
+        e = d;
+        d = p / q;
+      } else {
+        d = xm;
+        e = d;
+      }
+    } else {
+      d = xm;
+      e = d;
+    }
+
+    a = b;
+    fa = fb;
+    if (Math.abs(d) > tol1) {
+      b += d;
+    } else {
+      b += xm > 0 ? tol1 : -tol1;
+    }
+    fb = f(b);
+  }
+
+  return b;
+}
+
 function solveRate(
   f: (rate: number) => number,
   fPrime: (rate: number) => number,
   guess: number,
 ): number {
-  const minRate = -0.999999999999;
+  const minRate = -0.99;
+  const maxRate = 10.0;
   const tolerance = 1e-10;
   const maxNewtonIterations = 50;
   const maxBisectionIterations = 200;
+  const maxBrentIterations = 200;
 
   let rate = guess;
   if (!Number.isFinite(rate)) {
@@ -65,6 +158,8 @@ function solveRate(
   for (let i = 0; i < maxNewtonIterations; i += 1) {
     if (rate <= minRate) {
       rate = minRate;
+    } else if (rate >= maxRate) {
+      rate = maxRate;
     }
 
     const value = f(rate);
@@ -88,13 +183,9 @@ function solveRate(
     rate = next;
   }
 
-  // Bracket + bisection fallback
+  // Bracket + Brent/bisection fallback
   let low = minRate;
-  let high = Math.max(guess, 0.1);
-  if (high <= low) {
-    high = 0.1;
-  }
-
+  let high = maxRate;
   let fLow = f(low);
   if (fLow === 0) {
     return low;
@@ -107,17 +198,39 @@ function solveRate(
   let sLow = sign(fLow);
   let sHigh = sign(fHigh);
 
-  for (let i = 0; i < 60 && sLow === sHigh; i += 1) {
-    high = high < 1 ? 1 : high * 2;
-    fHigh = f(high);
-    if (fHigh === 0) {
-      return high;
+  if (sLow === sHigh) {
+    // Try to find a bracket by scanning
+    const steps = 200;
+    let prevRate = minRate;
+    let prevValue = fLow;
+    for (let i = 1; i <= steps; i += 1) {
+      const rateStep = minRate + (maxRate - minRate) * (i / steps);
+      const value = f(rateStep);
+      if (value === 0) {
+        return rateStep;
+      }
+      if (sign(prevValue) !== sign(value)) {
+        low = prevRate;
+        high = rateStep;
+        fLow = prevValue;
+        fHigh = value;
+        sLow = sign(fLow);
+        sHigh = sign(fHigh);
+        break;
+      }
+      prevRate = rateStep;
+      prevValue = value;
     }
-    sHigh = sign(fHigh);
   }
 
   if (sLow === sHigh) {
     throw new Error("IRR could not be bracketed");
+  }
+
+  try {
+    return brentRoot(f, low, high, tolerance, maxBrentIterations);
+  } catch {
+    // Fall back to bisection if Brent fails
   }
 
   for (let i = 0; i < maxBisectionIterations; i += 1) {
@@ -191,7 +304,16 @@ export function irr(cashflows: number[], guess = 0.1): number {
     return total;
   };
 
-  return solveRate(f, fPrime, guess);
+  const guesses = [guess, 0.1, 0.2, 0.05, -0.5, 0.5, 1, 2, 5, 10];
+  const errors: string[] = [];
+  for (const g of guesses) {
+    try {
+      return solveRate(f, fPrime, g);
+    } catch (e) {
+      errors.push((e as Error).message);
+    }
+  }
+  throw new Error(errors[errors.length - 1] ?? "IRR could not be solved");
 }
 
 // Extended IRR for irregular periods (uses dates)
@@ -283,4 +405,3 @@ export function monthlyToAnnual(monthlyRate: number): number {
   assertRate(monthlyRate, "monthlyRate");
   return Math.pow(1 + monthlyRate, 12) - 1;
 }
-
