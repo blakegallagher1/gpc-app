@@ -2,8 +2,12 @@
 
 This file tracks all pending work items for the GPC App platform. Codex should update this file as work progresses.
 
-**Last Updated:** 2024-12-23
+**Last Updated:** 2025-12-23
 **Status Legend:** `[ ]` Pending | `[~]` In Progress | `[x]` Complete | `[!]` Blocked
+
+**Summary (current state):**
+- Completed: A1 (code fix), A2 (code hardening), B1–B7, E1, E3, F5
+- Blocked (manual/external): A1 ChatGPT verification, A2 ChatGPT sandbox test, C1/C2 template & mapping repairs, D1 22-page pack (missing sheets), F4 test fixtures
 
 ---
 
@@ -454,6 +458,10 @@ Use this section to log progress during work sessions.
 - Mapped Returns Summary, Error Check, Model Outputs, Annual CF, Rent Roll, Renovation Budget, and Monthly CF (page 1)
 - Updated reference mapping to improve shared-page comparison coverage
 - File: docs/IND_ACQ_REFERENCE_PAGE_MAP.json
+2025-12-23 11:26 - [Session] Production-readiness and pack/QA updates complete
+- Added SQLite-backed job persistence (E1) and MCP rate limiting (E3)
+- Logged D1 as blocked due to missing template sheets; expanded PDF page mappings for D2
+- Files: services/excel-engine/Program.cs, services/excel-engine/excel-engine.csproj, services/mcp-server/src/index.ts, docs/IND_ACQ_REFERENCE_PAGE_MAP.json, CODEX_PROGRESS.md
 ```
 
 ---
