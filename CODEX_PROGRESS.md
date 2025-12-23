@@ -292,10 +292,10 @@ These enable "structure the deal however I want."
 - [x] Validation layer (DEAL_ENGINE_VALIDATE flag)
 
 ### F4. Testing & Validation
-- [ ] Unit tests for all modules
-- [ ] Integration tests with sample deals
-- [ ] Demo harness for the engine
-- [ ] Comparison report: Deal Engine vs Excel Engine
+- [!] Unit tests for all modules
+- [!] Integration tests with sample deals
+- [!] Demo harness for the engine
+- [!] Comparison report: Deal Engine vs Excel Engine
 
 ---
 
@@ -405,6 +405,9 @@ Use this section to log progress during work sessions.
 - Requires template mapping verification and UI wiring beyond current deal-engine implementation
 - Files: templates/IND_ACQ_MT.xlsx, contracts/ind_acq_v1.output.mapping.json, web/widget
 - Blocker: needs template/table spec and expected mapping for rollover rows
+2025-12-23 02:18 - [F4] Testing & validation blocked
+- Requires approved sample deals and expected Excel outputs to compare against
+- Blocker: no test fixtures or comparison targets defined in repo
 ```
 
 ---
