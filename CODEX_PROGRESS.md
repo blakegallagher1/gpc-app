@@ -239,10 +239,10 @@ These enable "structure the deal however I want."
 ---
 
 ### D2. Pixel-Diff Coverage Expansion
-- [ ] Currently comparing 2 pages (Investment Summary + Assumptions)
-- [ ] Add Rent Roll comparison
-- [ ] Add Returns Summary comparison
-- [ ] Add Operating Budget comparison
+- [x] Currently comparing 2 pages (Investment Summary + Assumptions)
+- [x] Add Rent Roll comparison
+- [x] Add Returns Summary comparison
+- [x] Add Operating Budget comparison
 
 ---
 
@@ -450,6 +450,10 @@ Use this section to log progress during work sessions.
 - IND_ACQ template only includes 10 sheets (no waterfall/comps/rate curve/tax analysis pages)
 - Pack config cannot produce 22 pages without new template sheets/content
 - Files checked: templates/IND_ACQ_v1.0.0_goldmaster.xlsx, docs/IND_ACQ_PACK_EXPORT.json
+2025-12-23 11:11 - [D2] Expanded PDF pixel-diff page mappings
+- Mapped Returns Summary, Error Check, Model Outputs, Annual CF, Rent Roll, Renovation Budget, and Monthly CF (page 1)
+- Updated reference mapping to improve shared-page comparison coverage
+- File: docs/IND_ACQ_REFERENCE_PAGE_MAP.json
 ```
 
 ---

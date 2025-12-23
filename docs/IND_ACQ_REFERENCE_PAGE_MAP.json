@@ -18,59 +18,74 @@
       "notes": "Both are executive summary pages with key metrics"
     },
     {
+      "generated_page": 2,
+      "reference_page": 4,
+      "sheet_name": "Returns Summary",
+      "confidence": "high",
+      "notes": "Both are returns summary pages with IRR/multiple highlights"
+    },
+    {
+      "generated_page": 3,
+      "reference_page": 3,
+      "sheet_name": "Error Check",
+      "confidence": "medium",
+      "notes": "Reference page includes error check and cashflow summary sections"
+    },
+    {
+      "generated_page": 4,
+      "reference_page": 5,
+      "sheet_name": "Model Outputs",
+      "confidence": "medium",
+      "notes": "Both include sources/uses and model outputs matrix"
+    },
+    {
+      "generated_page": 5,
+      "reference_page": 6,
+      "sheet_name": "Annual CF",
+      "confidence": "high",
+      "notes": "Annual cashflow summary appears on reference page 6"
+    },
+    {
       "generated_page": 6,
       "reference_page": 8,
       "sheet_name": "Assumptions",
       "confidence": "medium",
       "notes": "Core assumptions page, may have different layout"
+    },
+    {
+      "generated_page": 7,
+      "reference_page": 9,
+      "sheet_name": "Rent Roll",
+      "confidence": "high",
+      "notes": "Rent roll appears on reference page 9"
+    },
+    {
+      "generated_page": 8,
+      "reference_page": 10,
+      "sheet_name": "Renovation Budget",
+      "confidence": "high",
+      "notes": "Renovation budget appears on reference page 10"
+    },
+    {
+      "generated_page": 9,
+      "reference_page": 12,
+      "sheet_name": "Monthly CF (1/3)",
+      "confidence": "medium",
+      "notes": "Monthly CF section starts on reference page 12"
     }
   ],
 
   "unmapped_generated_pages": [
     {
-      "page": 2,
-      "sheet_name": "Returns Summary",
-      "reason": "Our custom returns analysis sheet"
-    },
-    {
-      "page": 3,
-      "sheet_name": "Error Check",
-      "reason": "Our custom validation sheet"
-    },
-    {
-      "page": 4,
-      "sheet_name": "Model Outputs",
-      "reason": "Our custom outputs matrix"
-    },
-    {
-      "page": 5,
-      "sheet_name": "Annual CF",
-      "reason": "Annual cashflow may exist in reference but at different page"
-    },
-    {
-      "page": 7,
-      "sheet_name": "Rent Roll",
-      "reason": "Rent roll may exist in reference but at different page"
-    },
-    {
-      "page": 8,
-      "sheet_name": "Renovation Budget",
-      "reason": "Budget may exist in reference but at different page"
-    },
-    {
-      "page": 9,
-      "sheet_name": "Monthly CF (1/3)",
-      "reason": "Monthly cashflow exists in reference but layout differs"
-    },
     {
       "page": 10,
       "sheet_name": "Monthly CF (2/3)",
-      "reason": "Continuation of monthly cashflow"
+      "reason": "Continuation of monthly cashflow; reference page mapping TBD"
     },
     {
       "page": 11,
       "sheet_name": "Monthly CF (3/3)",
-      "reason": "Continuation of monthly cashflow"
+      "reason": "Continuation of monthly cashflow; reference page mapping TBD"
     }
   ],
 
