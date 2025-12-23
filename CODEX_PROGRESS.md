@@ -12,9 +12,9 @@ This file tracks all pending work items for the GPC App platform. Codex should u
 These items block "usable in ChatGPT without friction."
 
 ### A1. Template Usability Warning Fix
-- [ ] Remove `openai/outputTemplate` from hidden `ind_acq.validate_inputs` tool
-- [ ] Ensure template is associated with public tools only (`ind_acq.build_model`, `ind_acq.get_run_status`)
-- [ ] Verify in ChatGPT that template warning no longer appears
+- [x] Remove `openai/outputTemplate` from hidden `ind_acq.validate_inputs` tool
+- [x] Ensure template is associated with public tools only (`ind_acq.build_model`, `ind_acq.get_run_status`)
+- [!] Verify in ChatGPT that template warning no longer appears
 
 **Files:**
 - `services/mcp-server/src/index.ts`
@@ -352,6 +352,10 @@ Use this section to log progress during work sessions.
 - Phases 1-7 of Deal Engine complete
 - WaterfallModule and ScenarioRunner implemented (V0 scope)
 - Pending: Advanced features listed above
+2025-12-23 01:52 - [A1] Verified outputTemplate scope for IND_ACQ tools
+- Confirmed validate_inputs is private without outputTemplate; public tools retain template
+- File: services/mcp-server/src/index.ts
+- Note: ChatGPT UI verification still pending (needs manual sandbox check)
 ```
 
 ---
