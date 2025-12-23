@@ -58,6 +58,34 @@ export class DealEngine {
     // Validate acquisition inputs
     if (!inputs.modules?.acquisition) {
       allErrors.push({ path: "modules.acquisition", message: "acquisition is required" });
+    } else {
+      const acquisition = inputs.modules.acquisition;
+      const exitMonth = inputs.modules.exit?.exit_month;
+      if (acquisition.close_month !== undefined) {
+        if (!Number.isInteger(acquisition.close_month) || acquisition.close_month < 0) {
+          allErrors.push({
+            path: "modules.acquisition.close_month",
+            message: "close_month must be an integer greater than or equal to 0",
+          });
+        } else if (exitMonth !== undefined && acquisition.close_month >= exitMonth) {
+          allErrors.push({
+            path: "modules.acquisition.close_month",
+            message: "close_month must be less than exit_month",
+          });
+        }
+      }
+      if (acquisition.option_fee !== undefined && acquisition.option_fee < 0) {
+        allErrors.push({
+          path: "modules.acquisition.option_fee",
+          message: "option_fee must be greater than or equal to 0",
+        });
+      }
+      if (acquisition.reserves_at_closing !== undefined && acquisition.reserves_at_closing < 0) {
+        allErrors.push({
+          path: "modules.acquisition.reserves_at_closing",
+          message: "reserves_at_closing must be greater than or equal to 0",
+        });
+      }
     }
 
     // Validate each module
@@ -98,6 +126,7 @@ export class DealEngine {
         startDate: inputs.deal.analysis_start_date,
         holdPeriodMonths: inputs.deal.hold_period_months,
         exitMonth: inputs.modules.exit?.exit_month,
+        closeMonth: inputs.modules.acquisition.close_month ?? 0,
       });
     } catch (e) {
       return {

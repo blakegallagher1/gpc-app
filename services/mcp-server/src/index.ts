@@ -272,7 +272,13 @@ interface DealEngineInputsV0 {
     net_sf: number;
   };
   modules: {
-    acquisition: { purchase_price: number; closing_cost_pct: number };
+    acquisition: {
+      purchase_price: number;
+      closing_cost_pct: number;
+      close_month?: number;
+      option_fee?: number;
+      reserves_at_closing?: number;
+    };
     lease: { tenants_in_place: unknown[]; market_rollover?: unknown[] };
     operating?: {
       vacancy_pct: number;
@@ -310,6 +316,9 @@ function transformToDealEngineV0(indAcq: Record<string, unknown>): DealEngineInp
       acquisition: {
         purchase_price: (acq?.purchase_price as number) ?? 0,
         closing_cost_pct: (acq?.closing_cost_pct as number) ?? 0.015,
+        close_month: (acq?.close_month as number) ?? 0,
+        option_fee: (acq?.option_fee as number) ?? 0,
+        reserves_at_closing: (acq?.reserves_at_closing as number) ?? 0,
       },
       lease: {
         tenants_in_place: (rentRoll?.tenants_in_place as unknown[]) ?? [],

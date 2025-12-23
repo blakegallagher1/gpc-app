@@ -82,6 +82,7 @@ export class ExitModule implements Module<ExitModuleOutputs> {
     const acquisitionInputs = context.inputs.modules.acquisition;
     const timeline = context.timeline;
     const exitMonth = Math.min(exitInputs.exit_month, timeline.totalMonths);
+    const closeMonth = acquisitionInputs.close_month ?? 0;
 
     // Get module outputs
     const operatingOutputs = context.outputs.operating as OperatingModuleOutputs;
@@ -125,38 +126,41 @@ export class ExitModule implements Module<ExitModuleOutputs> {
     // Calculate total costs at acquisition
     const purchasePrice = acquisitionInputs.purchase_price;
     const closingCosts = purchasePrice * acquisitionInputs.closing_cost_pct;
-    const totalAcquisitionCost = purchasePrice + closingCosts;
+    const reservesAtClosing = acquisitionInputs.reserves_at_closing ?? 0;
+    const optionFee = acquisitionInputs.option_fee ?? 0;
+    const totalAcquisitionCost = purchasePrice + closingCosts + reservesAtClosing;
 
     // Calculate equity at acquisition
     const loanAmount = debtOutputs?.loanAmount ?? 0;
-    const equityInvestment = totalAcquisitionCost - loanAmount;
+    const equityInvestment = totalAcquisitionCost + optionFee - loanAmount;
 
     // Build unlevered cashflows
-    const unleveredCashflows: number[] = [];
-    unleveredCashflows.push(-totalAcquisitionCost); // Initial investment
-
-    for (let m = 0; m < exitMonth; m++) {
-      const monthlyCf = noi.get(m);
-      unleveredCashflows.push(monthlyCf);
+    const unleveredCashflows: number[] = new Array(exitMonth + 1).fill(0);
+    unleveredCashflows[0] = -optionFee;
+    if (closeMonth <= exitMonth) {
+      unleveredCashflows[closeMonth] -= totalAcquisitionCost;
     }
-
-    // Add sale proceeds to final month
+    for (let m = closeMonth; m < exitMonth; m++) {
+      unleveredCashflows[m] += noi.get(m);
+    }
     if (exitMonth > 0) {
       unleveredCashflows[exitMonth] += netSaleProceeds;
     }
 
     // Build levered cashflows
-    const leveredCashflows: number[] = [];
-    leveredCashflows.push(-equityInvestment); // Initial equity investment
+    const leveredCashflows: number[] = new Array(exitMonth + 1).fill(0);
+    leveredCashflows[0] = -optionFee;
+    if (closeMonth <= exitMonth) {
+      leveredCashflows[closeMonth] -= totalAcquisitionCost - loanAmount;
+    }
 
     const debtService = debtOutputs?.totalDebtService ?? Series.zeros(timeline.totalMonths);
 
-    for (let m = 0; m < exitMonth; m++) {
+    for (let m = closeMonth; m < exitMonth; m++) {
       const monthlyCf = noi.get(m) - debtService.get(m);
-      leveredCashflows.push(monthlyCf);
+      leveredCashflows[m] += monthlyCf;
     }
 
-    // Add net equity proceeds to final month
     if (exitMonth > 0) {
       leveredCashflows[exitMonth] += netEquityProceeds;
     }
@@ -180,9 +184,10 @@ export class ExitModule implements Module<ExitModuleOutputs> {
     // Calculate equity multiple
     // Equity Multiple = Total Cash Received / Total Equity Invested
     // Total Cash Received = all distributions including operating cashflow + sale proceeds
-    const totalCashReceived = leveredCashflows
-      .slice(1)
-      .reduce((sum, cf) => sum + cf, 0);
+    const totalCashReceived = leveredCashflows.reduce(
+      (sum, cf) => (cf > 0 ? sum + cf : sum),
+      0,
+    );
     const equityMultiple = equityInvestment > 0 ? totalCashReceived / equityInvestment : 0;
 
     // Calculate going-in cap rate
@@ -208,7 +213,7 @@ export class ExitModule implements Module<ExitModuleOutputs> {
 
     // Build final cashflow series (levered)
     const cashflowValues = new Array(timeline.totalMonths).fill(0);
-    for (let m = 0; m < exitMonth && m < timeline.totalMonths; m++) {
+    for (let m = closeMonth; m < exitMonth && m < timeline.totalMonths; m++) {
       cashflowValues[m] = noi.get(m) - debtService.get(m);
     }
     if (exitMonth > 0 && exitMonth <= timeline.totalMonths) {

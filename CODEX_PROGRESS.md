@@ -49,11 +49,11 @@ Widget-side openai APIs: May need verification
 These enable "structure the deal however I want."
 
 ### B1. Delayed Closing / Option Period
-- [ ] Add `close_month` to schema (default: 0)
-- [ ] Add `option_fee` and `reserves_at_option` fields
-- [ ] Update Timeline to handle close_month != 0
-- [ ] Adjust cashflow alignment (costs at close, not month 0)
-- [ ] Update returns calculations for delayed funding
+- [x] Add `close_month` to schema (default: 0)
+- [x] Add `option_fee` and `reserves_at_closing` fields
+- [x] Update Timeline to handle close_month != 0
+- [x] Adjust cashflow alignment (costs at close, not month 0)
+- [x] Update returns calculations for delayed funding
 
 **Schema Changes:**
 ```json
@@ -361,6 +361,11 @@ Use this section to log progress during work sessions.
 - Verified window.openai callTool/setWidgetState/openExternal usage in widget client
 - Files: services/mcp-server/src/index.ts, web/widget/src/lib/mcp-client.ts, web/widget/src/components/ResultsView.tsx
 - Blocker: ChatGPT sandbox test still required
+2025-12-23 01:58 - [B1] Added delayed closing inputs + cashflow alignment
+- Added close_month/option_fee/reserves_at_closing to schema and inputs
+- Timeline now validates close_month; ExitModule shifts acquisition and operating cashflows
+- Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/core/timeline.ts, services/deal-engine/src/modules/exit/exit-module.ts, services/deal-engine/src/engine/deal-engine.ts, services/deal-engine/src/types/inputs.ts, services/mcp-server/src/index.ts
+- Build: pnpm --filter @gpc/deal-engine build && test; pnpm --filter @gpc/mcp-server build
 ```
 
 ---

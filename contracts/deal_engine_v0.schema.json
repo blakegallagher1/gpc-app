@@ -73,6 +73,21 @@
               "minimum": 0,
               "maximum": 0.2,
               "description": "Acquisition closing costs as a percent of purchase price (decimal)."
+            },
+            "close_month": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Months from analysis start until closing (0 = close immediately)."
+            },
+            "option_fee": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Non-refundable option fee paid at month 0."
+            },
+            "reserves_at_closing": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Reserves funded at closing."
             }
           }
         },

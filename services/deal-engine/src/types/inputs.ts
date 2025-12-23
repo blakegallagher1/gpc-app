@@ -34,6 +34,9 @@ export interface ModulesInput {
 export interface AcquisitionInput {
   purchase_price: number;
   closing_cost_pct: number;
+  close_month?: number;
+  option_fee?: number;
+  reserves_at_closing?: number;
 }
 
 export type LeaseType = "NNN" | "MOD_GROSS" | "GROSS";

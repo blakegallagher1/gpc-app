@@ -4,12 +4,14 @@ export interface TimelineConfig {
   startDate: string; // ISO date string (e.g., '2026-01-01')
   holdPeriodMonths: number; // Total months in analysis
   exitMonth?: number; // Optional, defaults to holdPeriodMonths
+  closeMonth?: number; // Optional, defaults to 0
 }
 
 export class Timeline {
   readonly startDate: DateTime;
   readonly holdPeriodMonths: number;
   readonly exitMonth: number;
+  readonly closeMonth: number;
   readonly endDate: DateTime;
 
   constructor(config: TimelineConfig) {
@@ -27,9 +29,15 @@ export class Timeline {
       throw new Error("exitMonth must be an integer between 1 and holdPeriodMonths");
     }
 
+    const closeMonth = config.closeMonth ?? 0;
+    if (!Number.isInteger(closeMonth) || closeMonth < 0 || closeMonth >= exitMonth) {
+      throw new Error("closeMonth must be an integer between 0 and exitMonth - 1");
+    }
+
     this.startDate = startDate;
     this.holdPeriodMonths = config.holdPeriodMonths;
     this.exitMonth = exitMonth;
+    this.closeMonth = closeMonth;
     this.endDate = this.startDate.plus({ months: this.holdPeriodMonths });
   }
 
