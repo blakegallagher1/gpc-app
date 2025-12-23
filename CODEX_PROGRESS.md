@@ -226,13 +226,13 @@ These enable "structure the deal however I want."
 ## D. PDF Pack Expansion
 
 ### D1. Full 22-Page Investor Pack
-- [ ] Waterfall page
-- [ ] Comps page
-- [ ] Rate curve page
-- [ ] Rent Roll Detail page
-- [ ] Construction Budget page (if applicable)
-- [ ] Tax Analysis page
-- [ ] Returns Summary page
+- [!] Waterfall page
+- [!] Comps page
+- [!] Rate curve page
+- [!] Rent Roll Detail page
+- [!] Construction Budget page (if applicable)
+- [!] Tax Analysis page
+- [!] Returns Summary page
 
 **Current:** Pack V1 locked to 11 pages.
 
@@ -446,6 +446,10 @@ Use this section to log progress during work sessions.
 - Returned 429 with Retry-After and rate limit headers on limit exceed
 - File: services/mcp-server/src/index.ts
 - Build: pnpm --filter @gpc/mcp-server build
+2025-12-23 11:10 - [D1] Full 22-page investor pack blocked
+- IND_ACQ template only includes 10 sheets (no waterfall/comps/rate curve/tax analysis pages)
+- Pack config cannot produce 22 pages without new template sheets/content
+- Files checked: templates/IND_ACQ_v1.0.0_goldmaster.xlsx, docs/IND_ACQ_PACK_EXPORT.json
 ```
 
 ---
