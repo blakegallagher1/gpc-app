@@ -117,9 +117,9 @@ These enable "structure the deal however I want."
 ---
 
 ### B4. Landlord Reserve Schedule by Year
-- [ ] Add `reserves_schedule` to operating inputs
-- [ ] Support year-by-year reserve amounts
-- [ ] Integrate into cashflow calculations
+- [x] Add `reserves_schedule` to operating inputs
+- [x] Support year-by-year reserve amounts
+- [x] Integrate into cashflow calculations
 
 **Schema Changes:**
 ```json
@@ -379,6 +379,11 @@ Use this section to log progress during work sessions.
 2025-12-23 02:08 - [B3] Added explicit NNN recovery inputs + calculations
 - Added recoveries inflation and recovery flags/caps to schema and inputs
 - OperatingModule now separates taxes/insurance/CAM and applies recoveries/admin fees
+- Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/types/inputs.ts, services/deal-engine/src/modules/operating/operating-module.ts
+- Build: pnpm --filter @gpc/deal-engine build && test
+2025-12-23 02:09 - [B4] Added landlord reserve schedule
+- Added reserves_schedule to operating inputs and schema
+- OperatingModule now allocates annual reserves across matching months
 - Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/types/inputs.ts, services/deal-engine/src/modules/operating/operating-module.ts
 - Build: pnpm --filter @gpc/deal-engine build && test
 ```

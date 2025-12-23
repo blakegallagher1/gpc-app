@@ -379,6 +379,19 @@
                   }
                 }
               }
+            },
+            "reserves_schedule": {
+              "type": "array",
+              "description": "Year-by-year reserve schedule.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["year", "amount"],
+                "properties": {
+                  "year": { "type": "integer", "description": "Calendar year for reserves." },
+                  "amount": { "type": "number", "minimum": 0, "description": "Annual reserve amount." }
+                }
+              }
             }
           }
         },

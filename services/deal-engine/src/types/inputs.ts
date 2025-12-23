@@ -122,11 +122,17 @@ export interface OperatingExpensesInput {
   recoveries: OperatingRecoveriesInput;
 }
 
+export interface OperatingReserveScheduleInput {
+  year: number;
+  amount: number;
+}
+
 export interface OperatingInput {
   vacancy_pct: number;
   credit_loss_pct: number;
   inflation: OperatingInflationInput;
   expenses: OperatingExpensesInput;
+  reserves_schedule?: OperatingReserveScheduleInput[];
 }
 
 export interface AcquisitionLoanInput {

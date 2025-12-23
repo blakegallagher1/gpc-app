@@ -110,6 +110,22 @@ export class OperatingModule implements Module<OperatingModuleOutputs> {
           message: "cam_annual_increase_cap must be between 0 and 1",
         });
       }
+      if (operatingInputs.reserves_schedule) {
+        operatingInputs.reserves_schedule.forEach((entry, idx) => {
+          if (!Number.isInteger(entry.year)) {
+            errors.push({
+              path: `operating.reserves_schedule[${idx}].year`,
+              message: "year must be an integer",
+            });
+          }
+          if (entry.amount < 0) {
+            errors.push({
+              path: `operating.reserves_schedule[${idx}].amount`,
+              message: "amount must be greater than or equal to 0",
+            });
+          }
+        });
+      }
     }
 
     return { valid: errors.length === 0, errors };
@@ -190,6 +206,21 @@ export class OperatingModule implements Module<OperatingModuleOutputs> {
       taxRecoveriesValues[m] = taxesRecovery;
       insuranceRecoveriesValues[m] = insuranceRecovery;
       camRecoveriesValues[m] = camRecovery;
+    }
+
+    const reservesValues = new Array(totalMonths).fill(0);
+    if (operatingInputs.reserves_schedule && operatingInputs.reserves_schedule.length > 0) {
+      for (const entry of operatingInputs.reserves_schedule) {
+        const monthlyReserve = entry.amount / 12;
+        for (let m = 0; m < totalMonths; m++) {
+          if (timeline.dateAt(m).year === entry.year) {
+            reservesValues[m] += monthlyReserve;
+          }
+        }
+      }
+      for (let m = 0; m < totalMonths; m++) {
+        expenseValues[m] += reservesValues[m];
+      }
     }
 
     const camCap = recoveriesConfig.caps?.cam_annual_increase_cap;
