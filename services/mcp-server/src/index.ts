@@ -16,6 +16,8 @@ import { z } from "zod";
 
 const PORT = Number(process.env.PORT ?? 8000);
 const WIDGET_PUBLIC_URL = process.env.WIDGET_PUBLIC_URL ?? process.env.WIDGET_URL ?? "http://localhost:3001";
+// MCP server public URL for CSP connect-src (defaults to localhost for dev)
+const MCP_PUBLIC_URL = process.env.MCP_PUBLIC_URL ?? `http://localhost:${PORT}`;
 // B2 download URL for CSP allow-list (defaults to common Backblaze endpoints)
 const B2_DOWNLOAD_URL = process.env.B2_DOWNLOAD_URL?.trim() ?? "";
 const MCP_PATH = "/mcp";
@@ -152,13 +154,13 @@ const DEFAULT_VALUES: Record<string, unknown> = {
 };
 
 // Build CSP directives for Apps SDK widget (legacy HTML meta tag)
-function buildCsp(requestHost?: string): string {
-  const widgetHost = new URL(WIDGET_PUBLIC_URL).origin;
-  // Use request host in production, fallback to localhost for dev
-  const mcpHost = requestHost ? `https://${requestHost}` : `http://localhost:${PORT}`;
+// Note: ChatGPT Apps submission requires _meta CSP, not just HTML meta tags
+function buildCsp(): string {
+  const widgetOrigin = new URL(WIDGET_PUBLIC_URL).origin;
+  const mcpOrigin = new URL(MCP_PUBLIC_URL).origin;
 
   // Build connect-src list with B2 download URLs
-  const connectSrc = [mcpHost, EXCEL_ENGINE_BASE_URL];
+  const connectSrc = [mcpOrigin, EXCEL_ENGINE_BASE_URL];
 
   // Add Backblaze B2 download URLs to CSP
   // Default B2 regions for file downloads (f001-f005.backblazeb2.com)
@@ -186,7 +188,7 @@ function buildCsp(requestHost?: string): string {
 
   return [
     `default-src 'none'`,
-    `script-src 'self' ${widgetHost} 'unsafe-inline'`,
+    `script-src 'self' ${widgetOrigin} 'unsafe-inline'`,
     `style-src 'self' 'unsafe-inline'`,
     `connect-src ${connectSrc.join(' ')}`,
     `img-src 'self' data:`,
@@ -195,24 +197,24 @@ function buildCsp(requestHost?: string): string {
 
 // Build Apps SDK widgetCSP object for MCP resource metadata
 function buildWidgetCsp(): Record<string, unknown> {
-  const widgetUrl = new URL(WIDGET_PUBLIC_URL);
-  const widgetHost = widgetUrl.hostname;
+  const widgetOrigin = new URL(WIDGET_PUBLIC_URL).origin;
+  const mcpOrigin = new URL(MCP_PUBLIC_URL).origin;
 
-  // Extract B2 download hosts
-  const b2Hosts = [
-    "f005.backblazeb2.com",
-    "f004.backblazeb2.com",
-    "f003.backblazeb2.com",
-    "f002.backblazeb2.com",
-    "f001.backblazeb2.com",
+  // B2 redirect domains (full origins for file downloads)
+  const b2RedirectDomains = [
+    "https://f001.backblazeb2.com",
+    "https://f002.backblazeb2.com",
+    "https://f003.backblazeb2.com",
+    "https://f004.backblazeb2.com",
+    "https://f005.backblazeb2.com",
   ];
 
   // Add custom B2 download URL if specified
   if (B2_DOWNLOAD_URL) {
     try {
-      const customB2Host = new URL(B2_DOWNLOAD_URL).hostname;
-      if (!b2Hosts.includes(customB2Host)) {
-        b2Hosts.unshift(customB2Host);
+      const customB2Origin = new URL(B2_DOWNLOAD_URL).origin;
+      if (!b2RedirectDomains.includes(customB2Origin)) {
+        b2RedirectDomains.unshift(customB2Origin);
       }
     } catch {
       // Invalid URL, skip
@@ -220,11 +222,18 @@ function buildWidgetCsp(): Record<string, unknown> {
   }
 
   return {
-    script_domains: [widgetHost],
-    style_domains: [widgetHost],
-    connect_domains: [widgetHost],
-    redirect_domains: b2Hosts,
+    // resource_domains: where widget assets (JS/CSS) are loaded from
+    resource_domains: [widgetOrigin],
+    // connect_domains: where widget can make API calls (MCP server)
+    connect_domains: [mcpOrigin],
+    // redirect_domains: where download links redirect (B2 file storage)
+    redirect_domains: b2RedirectDomains,
   };
+}
+
+// Get widget origin for widgetDomain metadata
+function getWidgetOrigin(): string {
+  return new URL(WIDGET_PUBLIC_URL).origin;
 }
 
 // Widget HTML template for ChatGPT Apps SDK (skybridge bundle - no iframe)
@@ -250,6 +259,7 @@ function createIndAcqServer() {
   const server = new McpServer({ name: "ind-acq-mcp", version: "0.1.0" });
 
   // Register widget resource for ChatGPT Apps SDK
+  // All _meta fields required for ChatGPT Apps submission
   server.resource(
     "ind-acq-widget",
     "ui://widget/ind-acq",
@@ -258,6 +268,9 @@ function createIndAcqServer() {
       mimeType: "text/html+skybridge",
       _meta: {
         "openai/widgetCSP": buildWidgetCsp(),
+        "openai/widgetDomain": getWidgetOrigin(),
+        "openai/widgetDescription": "Industrial acquisition underwriting widget (IND_ACQ).",
+        "openai/widgetPrefersBorder": true,
       },
     },
     async () => ({
@@ -266,6 +279,12 @@ function createIndAcqServer() {
           uri: "ui://widget/ind-acq",
           mimeType: "text/html+skybridge",
           text: getWidgetHtml(),
+          _meta: {
+            "openai/widgetCSP": buildWidgetCsp(),
+            "openai/widgetDomain": getWidgetOrigin(),
+            "openai/widgetDescription": "Industrial acquisition underwriting widget (IND_ACQ).",
+            "openai/widgetPrefersBorder": true,
+          },
         },
       ],
     })
