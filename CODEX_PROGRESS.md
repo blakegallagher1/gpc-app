@@ -201,10 +201,10 @@ These enable "structure the deal however I want."
 ## C. Multi-Tenant Support (Currently Quarantined)
 
 ### C1. IND_ACQ_MT Template Repair
-- [ ] Fix broken template formulas (NOI showing -$40M)
-- [ ] Validate multi-tenant NOI aggregation
-- [ ] Per-tenant rollover/downtime economics
-- [ ] Remove quarantine once fixed
+- [!] Fix broken template formulas (NOI showing -$40M)
+- [!] Validate multi-tenant NOI aggregation
+- [!] Per-tenant rollover/downtime economics
+- [!] Remove quarantine once fixed
 
 **Current Behavior:** tenant_count >= 2 falls back to IND_ACQ with warning.
 
@@ -397,6 +397,10 @@ Use this section to log progress during work sessions.
 - Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/types/inputs.ts, services/deal-engine/src/modules/scenario/scenario-runner.ts, services/deal-engine/src/index.ts
 - Build: pnpm --filter @gpc/deal-engine build && test
 - Blocker: MCP response integration not wired yet
+2025-12-23 02:17 - [C1] IND_ACQ_MT template repair blocked
+- Requires manual Excel template inspection/repair and recalculation to validate NOI aggregation
+- Files: templates/IND_ACQ_MT.xlsx, contracts/ind_acq_v1.output.mapping.json
+- Blocker: no automated template QA or formula map available in repo to safely repair
 ```
 
 ---
