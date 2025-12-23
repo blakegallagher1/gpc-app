@@ -27,38 +27,93 @@ Usage: scripts/codex-task.sh [-m model] [-q] [-t timeout_minutes] [--mode full-a
   -q            : Quiet mode (suppress stderr)
   -t minutes    : Timeout in minutes (default: 5, max: 10)
   --mode MODE   : Autonomy mode: full-auto (default), controlled, yolo
+  --mode=MODE   : Same as --mode MODE
   task_description : The task prompt (optional if provided via stdin)
 EOF
   exit 1
 }
 
-# Parse short options
-while getopts ":m:t:q" opt; do
-  case "${opt}" in
-    m) MODEL="${OPTARG}" ;;
-    t) TIMEOUT_MIN="${OPTARG}" ;;
-    q) QUIET=true ;;
-    \?) echo "Invalid option: -${OPTARG}" >&2; usage ;;
-    :)  echo "Option -${OPTARG} requires an argument." >&2; usage ;;
-  esac
-done
-shift $((OPTIND - 1))
-
-# Parse long options
+# Parse short + long options (portable, no GNU getopt).
+# Supports: -m MODEL / -mMODEL, -t MIN / -tMIN, -q, --mode MODE / --mode=MODE, and '--' end-of-options.
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode)
-      [[ $# -ge 2 ]] || { echo "Error: --mode requires an argument." >&2; usage; }
-      MODE="$2"
-      shift 2
+      shift
+      [[ $# -ge 1 ]] || { echo "Error: --mode requires an argument." >&2; usage; }
+      MODE="$1"
+      shift
       ;;
     --mode=*)
       MODE="${1#*=}"
-      shift 1
+      shift
       ;;
     --)
       shift
       break
+      ;;
+    -q)
+      QUIET=true
+      shift
+      ;;
+    -m)
+      shift
+      [[ $# -ge 1 ]] || { echo "Option -m requires an argument." >&2; usage; }
+      MODEL="$1"
+      shift
+      ;;
+    -m*)
+      MODEL="${1#-m}"
+      shift
+      ;;
+    -t)
+      shift
+      [[ $# -ge 1 ]] || { echo "Option -t requires an argument." >&2; usage; }
+      TIMEOUT_MIN="$1"
+      shift
+      ;;
+    -t*)
+      TIMEOUT_MIN="${1#-t}"
+      shift
+      ;;
+    -[!-]*)
+      short_opts="${1#-}"
+      shift
+      i=0
+      while [[ $i -lt ${#short_opts} ]]; do
+        opt="${short_opts:$i:1}"
+        case "${opt}" in
+          q)
+            QUIET=true
+            i=$((i + 1))
+            ;;
+          m)
+            arg="${short_opts:$((i + 1))}"
+            if [[ -n "${arg}" ]]; then
+              MODEL="${arg}"
+            else
+              [[ $# -ge 1 ]] || { echo "Option -m requires an argument." >&2; usage; }
+              MODEL="$1"
+              shift
+            fi
+            i=${#short_opts}
+            ;;
+          t)
+            arg="${short_opts:$((i + 1))}"
+            if [[ -n "${arg}" ]]; then
+              TIMEOUT_MIN="${arg}"
+            else
+              [[ $# -ge 1 ]] || { echo "Option -t requires an argument." >&2; usage; }
+              TIMEOUT_MIN="$1"
+              shift
+            fi
+            i=${#short_opts}
+            ;;
+          *)
+            echo "Invalid option: -${opt}" >&2
+            usage
+            ;;
+        esac
+      done
       ;;
     -*)
       echo "Error: Unknown option '$1'." >&2
