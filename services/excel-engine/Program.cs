@@ -119,6 +119,13 @@ const int MULTI_TENANT_THRESHOLD = 2; // 2+ tenants = multi-tenant template
 
 app.MapGet("/health", () => Results.Ok(new { ok = true }));
 
+app.MapGet("/debug/last-error", () => Results.Ok(new {
+    job_id = DebugState.LastJobId,
+    error = DebugState.LastJobError,
+    stack_trace = DebugState.LastJobErrorStack,
+    last_phase = DebugState.LastPhase
+}));
+
 app.MapGet("/version", () => Results.Ok(new
 {
     service = "excel-engine",
@@ -481,6 +488,7 @@ static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, 
                     error = ex.Message,
                     stackTrace = ex.StackTrace
                 });
+                DebugState.RecordError(jobId, $"NamedRange:{spec.Name}", ex);
                 throw;
             }
         }
@@ -525,6 +533,7 @@ static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, 
         catch (Exception ex)
         {
             LogStructured("ERROR", "Workbook calculation failed", new { jobId, error = ex.Message, stackTrace = ex.StackTrace });
+            DebugState.RecordError(jobId, "WorkbookCalculation", ex);
             throw;
         }
         LogStructured("INFO", "Workbook calculation complete", new { jobId });
@@ -633,6 +642,7 @@ static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, 
     catch (Exception ex)
     {
         LogStructured("ERROR", "Job failed", new { jobId, error = ex.Message, stackTrace = ex.StackTrace });
+        DebugState.RecordError(jobId, "RunJobAsync", ex);
         job.Error = ex.Message;
         job.Status = JobStatus.Failed;
     }
@@ -1940,3 +1950,31 @@ static class JobStatus
 
 readonly record struct NamedRangeSpec(string Key, string Name, string Path);
 readonly record struct PathSegment(string Property, bool IsIndex, int Index, string Raw);
+
+// ============================================================================
+// Debug State for Error Capture (accessible via /debug/last-error)
+// ============================================================================
+static class DebugState
+{
+    private static readonly object _lock = new();
+    private static string? _lastJobId;
+    private static string? _lastJobError;
+    private static string? _lastJobErrorStack;
+    private static string? _lastPhase;
+
+    public static string? LastJobId { get { lock (_lock) return _lastJobId; } }
+    public static string? LastJobError { get { lock (_lock) return _lastJobError; } }
+    public static string? LastJobErrorStack { get { lock (_lock) return _lastJobErrorStack; } }
+    public static string? LastPhase { get { lock (_lock) return _lastPhase; } }
+
+    public static void RecordError(string jobId, string phase, Exception ex)
+    {
+        lock (_lock)
+        {
+            _lastJobId = jobId;
+            _lastPhase = phase;
+            _lastJobError = ex.Message;
+            _lastJobErrorStack = ex.StackTrace;
+        }
+    }
+}
