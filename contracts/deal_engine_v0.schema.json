@@ -377,6 +377,18 @@
                       }
                     }
                   }
+                },
+                "fixed_annual": {
+                  "type": "object",
+                  "description": "Fixed annual expense items.",
+                  "additionalProperties": false,
+                  "properties": {
+                    "reserves": { "type": "number", "minimum": 0, "description": "Year 1 reserves amount." },
+                    "reserves_growth_pct": {
+                      "type": "number",
+                      "description": "Annual growth rate for reserves (decimal)."
+                    }
+                  }
                 }
               }
             },

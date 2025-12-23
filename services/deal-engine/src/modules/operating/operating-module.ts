@@ -126,6 +126,16 @@ export class OperatingModule implements Module<OperatingModuleOutputs> {
           }
         });
       }
+      if (
+        operatingInputs.expenses.fixed_annual?.reserves_growth_pct !== undefined &&
+        (operatingInputs.expenses.fixed_annual.reserves_growth_pct < 0 ||
+          operatingInputs.expenses.fixed_annual.reserves_growth_pct > 1)
+      ) {
+        errors.push({
+          path: "operating.expenses.fixed_annual.reserves_growth_pct",
+          message: "reserves_growth_pct must be between 0 and 1",
+        });
+      }
     }
 
     return { valid: errors.length === 0, errors };
@@ -209,6 +219,15 @@ export class OperatingModule implements Module<OperatingModuleOutputs> {
     }
 
     const reservesValues = new Array(totalMonths).fill(0);
+    const baseReserves = operatingInputs.expenses.fixed_annual?.reserves ?? 0;
+    const reservesGrowth = operatingInputs.expenses.fixed_annual?.reserves_growth_pct ?? 0;
+    if (baseReserves > 0) {
+      for (let m = 0; m < totalMonths; m++) {
+        const yearIndex = Math.floor(m / 12);
+        const annualReserves = baseReserves * Math.pow(1 + reservesGrowth, yearIndex);
+        reservesValues[m] += annualReserves / 12;
+      }
+    }
     if (operatingInputs.reserves_schedule && operatingInputs.reserves_schedule.length > 0) {
       for (const entry of operatingInputs.reserves_schedule) {
         const monthlyReserve = entry.amount / 12;
@@ -218,9 +237,9 @@ export class OperatingModule implements Module<OperatingModuleOutputs> {
           }
         }
       }
-      for (let m = 0; m < totalMonths; m++) {
-        expenseValues[m] += reservesValues[m];
-      }
+    }
+    for (let m = 0; m < totalMonths; m++) {
+      expenseValues[m] += reservesValues[m];
     }
 
     const camCap = recoveriesConfig.caps?.cam_annual_increase_cap;

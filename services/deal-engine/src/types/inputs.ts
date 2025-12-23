@@ -118,8 +118,14 @@ export interface OperatingRecoveriesInput {
   };
 }
 
+export interface FixedAnnualExpenses {
+  reserves?: number;
+  reserves_growth_pct?: number;
+}
+
 export interface OperatingExpensesInput {
   recoveries: OperatingRecoveriesInput;
+  fixed_annual?: FixedAnnualExpenses;
 }
 
 export interface OperatingReserveScheduleInput {

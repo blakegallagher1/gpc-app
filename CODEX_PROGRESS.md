@@ -297,6 +297,10 @@ These enable "structure the deal however I want."
 - [!] Demo harness for the engine
 - [!] Comparison report: Deal Engine vs Excel Engine
 
+### F5. Discount Rate Inputs (NPV)
+- [x] Add discount rate inputs to schema
+- [x] Compute NPV for levered/unlevered cashflows
+
 ---
 
 ## G. Nice-to-Have Improvements
@@ -408,6 +412,11 @@ Use this section to log progress during work sessions.
 2025-12-23 02:18 - [F4] Testing & validation blocked
 - Requires approved sample deals and expected Excel outputs to compare against
 - Blocker: no test fixtures or comparison targets defined in repo
+2025-12-23 02:20 - [Task1] Added reserves growth input support
+- Added operating fixed_annual reserves + growth in schema and inputs
+- OperatingModule now applies annual reserves growth in monthly expenses
+- Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/types/inputs.ts, services/deal-engine/src/modules/operating/operating-module.ts
+- Build: pnpm --filter @gpc/deal-engine build && test; pnpm --filter @gpc/mcp-server build
 ```
 
 ---
