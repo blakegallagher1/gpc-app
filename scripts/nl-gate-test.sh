@@ -210,13 +210,13 @@ else
     # Validate extracted inputs
     log_info "Validating extracted inputs..."
     VALIDATE_RESPONSE=$(call_tool_with_retry "ind_acq.validate_inputs" "{\"inputs\":$INPUTS1}")
-    VALID_STATUS=$(get_field "$VALIDATE_RESPONSE" "result.structuredContent.valid")
+    VALID_STATUS=$(get_field "$VALIDATE_RESPONSE" "result.structuredContent.status")
 
-    if [ "$VALID_STATUS" = "True" ] || [ "$VALID_STATUS" = "true" ]; then
+    if [ "$VALID_STATUS" = "ok" ]; then
       log_pass "Extracted inputs validated successfully"
     else
       ERRORS=$(get_field "$VALIDATE_RESPONSE" "result.structuredContent.errors")
-      log_fail "Extracted inputs failed validation: $ERRORS"
+      log_fail "Extracted inputs failed validation (status=$VALID_STATUS): $ERRORS"
     fi
   elif [ "$STATUS1" = "needs_info" ]; then
     # Accept needs_info as partial success (extraction worked, some fields missing)
