@@ -145,6 +145,13 @@ export interface AcquisitionLoanInput {
 
 export interface DebtInput {
   acquisition_loan: AcquisitionLoanInput;
+  sizing_mode?: "ltv" | "dscr" | "explicit";
+  explicit_loan_amount?: number;
+  funding_month?: number;
+  covenants?: {
+    min_dscr?: number;
+    cash_sweep_trigger_dscr?: number;
+  };
 }
 
 export interface ExitInput {

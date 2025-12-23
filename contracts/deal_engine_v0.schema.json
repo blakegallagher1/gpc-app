@@ -439,6 +439,37 @@
                   "description": "Loan term in months."
                 }
               }
+            },
+            "sizing_mode": {
+              "type": "string",
+              "enum": ["ltv", "dscr", "explicit"],
+              "description": "Debt sizing mode."
+            },
+            "explicit_loan_amount": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Explicit loan amount when sizing_mode=explicit."
+            },
+            "funding_month": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Month index when the loan funds (default: close_month)."
+            },
+            "covenants": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "min_dscr": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Minimum DSCR covenant."
+                },
+                "cash_sweep_trigger_dscr": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "DSCR threshold triggering cash sweep."
+                }
+              }
             }
           }
         },

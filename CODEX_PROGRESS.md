@@ -137,11 +137,11 @@ These enable "structure the deal however I want."
 ---
 
 ### B5. Advanced Debt Sizing Modes
-- [ ] DSCR-only sizing (LTV non-binding)
-- [ ] Explicit loan amount mode (user specifies exact amount)
-- [ ] Delayed funding support (loan funds at close_month)
-- [ ] Covenant testing (DSCR tests by period)
-- [ ] Cash sweep mechanics
+- [x] DSCR-only sizing (LTV non-binding)
+- [x] Explicit loan amount mode (user specifies exact amount)
+- [x] Delayed funding support (loan funds at close_month)
+- [x] Covenant testing (DSCR tests by period)
+- [x] Cash sweep mechanics
 
 **Schema Changes:**
 ```json
@@ -385,6 +385,11 @@ Use this section to log progress during work sessions.
 - Added reserves_schedule to operating inputs and schema
 - OperatingModule now allocates annual reserves across matching months
 - Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/types/inputs.ts, services/deal-engine/src/modules/operating/operating-module.ts
+- Build: pnpm --filter @gpc/deal-engine build && test
+2025-12-23 02:13 - [B5] Added advanced debt sizing + covenant controls
+- Added sizing_mode, explicit loan amount, funding month, and covenants to schema/inputs
+- DebtModule now sizes by DSCR/explicit amount, supports funding delays, and applies cash sweep
+- Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/types/inputs.ts, services/deal-engine/src/modules/debt/debt-module.ts
 - Build: pnpm --filter @gpc/deal-engine build && test
 ```
 
