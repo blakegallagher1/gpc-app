@@ -329,6 +329,12 @@
                   "minimum": -0.1,
                   "maximum": 0.2,
                   "description": "Annual property tax growth rate (decimal)."
+                },
+                "recoveries": {
+                  "type": "number",
+                  "minimum": -0.1,
+                  "maximum": 0.2,
+                  "description": "Annual recovery growth rate (decimal)."
                 }
               }
             },
@@ -348,6 +354,27 @@
                       "type": "string",
                       "enum": ["NNN", "MOD_GROSS", "GROSS"],
                       "description": "Expense recovery mode."
+                    },
+                    "tax_recoverable": { "type": "boolean", "description": "Whether taxes are recoverable." },
+                    "insurance_recoverable": { "type": "boolean", "description": "Whether insurance is recoverable." },
+                    "cam_recoverable": { "type": "boolean", "description": "Whether CAM is recoverable." },
+                    "admin_fee_pct": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "description": "Admin fee applied to recoverable expenses (decimal)."
+                    },
+                    "caps": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "cam_annual_increase_cap": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1,
+                          "description": "Annual cap on CAM recovery increases (decimal)."
+                        }
+                      }
                     }
                   }
                 }

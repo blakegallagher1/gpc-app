@@ -104,10 +104,18 @@ export interface OperatingInflationInput {
   rent: number;
   expenses: number;
   taxes: number;
+  recoveries?: number;
 }
 
 export interface OperatingRecoveriesInput {
   mode: LeaseType;
+  tax_recoverable?: boolean;
+  insurance_recoverable?: boolean;
+  cam_recoverable?: boolean;
+  admin_fee_pct?: number;
+  caps?: {
+    cam_annual_increase_cap?: number;
+  };
 }
 
 export interface OperatingExpensesInput {

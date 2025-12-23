@@ -22,12 +22,26 @@ const DEFAULT_OPERATING: OperatingInput = {
     rent: 0.03,
     expenses: 0.03,
     taxes: 0.02,
+    recoveries: 0.02,
   },
   expenses: {
     recoveries: {
       mode: "NNN",
+      tax_recoverable: true,
+      insurance_recoverable: true,
+      cam_recoverable: true,
+      admin_fee_pct: 0,
+      caps: {
+        cam_annual_increase_cap: 0,
+      },
     },
   },
+};
+
+const EXPENSE_WEIGHTS = {
+  taxes: 0.4,
+  insurance: 0.1,
+  cam: 0.5,
 };
 
 function assertOperatingInput(inputs: unknown): asserts inputs is OperatingInput | undefined {
@@ -71,6 +85,31 @@ export class OperatingModule implements Module<OperatingModuleOutputs> {
           message: "credit_loss_pct must be between 0 and 1",
         });
       }
+      if (
+        operatingInputs.inflation.recoveries !== undefined &&
+        (operatingInputs.inflation.recoveries < -0.1 || operatingInputs.inflation.recoveries > 0.2)
+      ) {
+        errors.push({
+          path: "operating.inflation.recoveries",
+          message: "recoveries must be between -0.1 and 0.2",
+        });
+      }
+      const recoveries = operatingInputs.expenses.recoveries;
+      if (recoveries.admin_fee_pct !== undefined && (recoveries.admin_fee_pct < 0 || recoveries.admin_fee_pct > 1)) {
+        errors.push({
+          path: "operating.expenses.recoveries.admin_fee_pct",
+          message: "admin_fee_pct must be between 0 and 1",
+        });
+      }
+      if (
+        recoveries.caps?.cam_annual_increase_cap !== undefined &&
+        (recoveries.caps.cam_annual_increase_cap < 0 || recoveries.caps.cam_annual_increase_cap > 1)
+      ) {
+        errors.push({
+          path: "operating.expenses.recoveries.caps.cam_annual_increase_cap",
+          message: "cam_annual_increase_cap must be between 0 and 1",
+        });
+      }
     }
 
     return { valid: errors.length === 0, errors };
@@ -110,12 +149,67 @@ export class OperatingModule implements Module<OperatingModuleOutputs> {
     const grossSf = context.inputs.deal.gross_sf;
     const monthlyBaseExpense = (baseExpensePerSf * grossSf) / 12;
     const expenseInflation = operatingInputs.inflation.expenses;
-    const monthlyInflationRate = Math.pow(1 + expenseInflation, 1 / 12) - 1;
+    const taxInflation = operatingInputs.inflation.taxes;
+    const recoveriesInflation = operatingInputs.inflation.recoveries ?? operatingInputs.inflation.expenses;
+    const monthlyExpenseInflationRate = Math.pow(1 + expenseInflation, 1 / 12) - 1;
+    const monthlyTaxInflationRate = Math.pow(1 + taxInflation, 1 / 12) - 1;
+    const monthlyRecoveriesInflationRate = Math.pow(1 + recoveriesInflation, 1 / 12) - 1;
 
-    const expenseValues = new Array(totalMonths).fill(0).map((_, m) => {
-      return monthlyBaseExpense * Math.pow(1 + monthlyInflationRate, m);
+    const expenseValues = new Array(totalMonths).fill(0);
+    const taxRecoveriesValues = new Array(totalMonths).fill(0);
+    const insuranceRecoveriesValues = new Array(totalMonths).fill(0);
+    const camRecoveriesValues = new Array(totalMonths).fill(0);
+
+    const recoveriesConfig = operatingInputs.expenses.recoveries;
+    const taxRecoverable = recoveriesConfig.tax_recoverable ?? true;
+    const insuranceRecoverable = recoveriesConfig.insurance_recoverable ?? true;
+    const camRecoverable = recoveriesConfig.cam_recoverable ?? true;
+    const adminFeePct = recoveriesConfig.admin_fee_pct ?? 0;
+
+    for (let m = 0; m < totalMonths; m++) {
+      const expenseFactor = Math.pow(1 + monthlyExpenseInflationRate, m);
+      const taxFactor = Math.pow(1 + monthlyTaxInflationRate, m);
+      const recoveryFactor = Math.pow(1 + monthlyRecoveriesInflationRate, m);
+
+      const taxesExpense = monthlyBaseExpense * EXPENSE_WEIGHTS.taxes * taxFactor;
+      const insuranceExpense = monthlyBaseExpense * EXPENSE_WEIGHTS.insurance * expenseFactor;
+      const camExpense = monthlyBaseExpense * EXPENSE_WEIGHTS.cam * expenseFactor;
+
+      expenseValues[m] = taxesExpense + insuranceExpense + camExpense;
+
+      const taxesRecovery = taxRecoverable
+        ? monthlyBaseExpense * EXPENSE_WEIGHTS.taxes * recoveryFactor
+        : 0;
+      const insuranceRecovery = insuranceRecoverable
+        ? monthlyBaseExpense * EXPENSE_WEIGHTS.insurance * recoveryFactor
+        : 0;
+      const camRecovery = camRecoverable
+        ? monthlyBaseExpense * EXPENSE_WEIGHTS.cam * recoveryFactor
+        : 0;
+
+      taxRecoveriesValues[m] = taxesRecovery;
+      insuranceRecoveriesValues[m] = insuranceRecovery;
+      camRecoveriesValues[m] = camRecovery;
+    }
+
+    const camCap = recoveriesConfig.caps?.cam_annual_increase_cap;
+    if (camCap !== undefined && camCap > 0) {
+      const monthlyCamCapRate = Math.pow(1 + camCap, 1 / 12) - 1;
+      for (let m = 1; m < totalMonths; m++) {
+        const maxAllowed = camRecoveriesValues[m - 1] * (1 + monthlyCamCapRate);
+        if (camRecoveriesValues[m] > maxAllowed) {
+          camRecoveriesValues[m] = maxAllowed;
+        }
+      }
+    }
+
+    const recoveriesValues = new Array(totalMonths).fill(0).map((_, idx) => {
+      return (
+        (taxRecoveriesValues[idx] ?? 0) +
+        (insuranceRecoveriesValues[idx] ?? 0) +
+        (camRecoveriesValues[idx] ?? 0)
+      );
     });
-    const operatingExpenses = new Series(expenseValues);
 
     // Calculate expense recoveries based on lease type
     let expenseRecoveries = Series.zeros(totalMonths);
@@ -123,12 +217,20 @@ export class OperatingModule implements Module<OperatingModuleOutputs> {
 
     if (recoveryMode === "NNN") {
       // NNN: Full expense recovery from tenants
-      expenseRecoveries = operatingExpenses;
+      const totals = recoveriesValues.map((value, idx) => {
+        return value * (1 + adminFeePct);
+      });
+      expenseRecoveries = new Series(totals);
     } else if (recoveryMode === "MOD_GROSS") {
       // Modified Gross: Partial recovery (50% for simplicity)
-      expenseRecoveries = operatingExpenses.multiply(0.5);
+      const totals = recoveriesValues.map((value, idx) => {
+        return value * 0.5 * (1 + adminFeePct);
+      });
+      expenseRecoveries = new Series(totals);
     }
     // GROSS: No recoveries (stays at zeros)
+
+    const operatingExpenses = new Series(expenseValues);
 
     // Calculate NOI
     const netOperatingIncome = effectiveGrossIncome

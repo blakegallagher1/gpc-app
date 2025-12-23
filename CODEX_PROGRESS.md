@@ -90,11 +90,11 @@ These enable "structure the deal however I want."
 ---
 
 ### B3. True NNN Recoveries with Disclosure
-- [ ] Model tenant reimbursements explicitly (tax/ins/CAM)
-- [ ] Separate recoverable vs non-recoverable expenses
-- [ ] Add recoveries inflation rate
-- [ ] Add caps/stops per expense category
-- [ ] Update OperatingModule for explicit recovery calculations
+- [x] Model tenant reimbursements explicitly (tax/ins/CAM)
+- [x] Separate recoverable vs non-recoverable expenses
+- [x] Add recoveries inflation rate
+- [x] Add caps/stops per expense category
+- [x] Update OperatingModule for explicit recovery calculations
 
 **Schema Changes:**
 ```json
@@ -375,6 +375,11 @@ Use this section to log progress during work sessions.
 - Added structure, LP classes, and expanded tier splits in schema + inputs
 - Relaxed WaterfallModule validation to accept tier split scaffolding
 - Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/types/inputs.ts, services/deal-engine/src/modules/waterfall/waterfall-module.ts, services/deal-engine/src/index.ts
+- Build: pnpm --filter @gpc/deal-engine build && test
+2025-12-23 02:08 - [B3] Added explicit NNN recovery inputs + calculations
+- Added recoveries inflation and recovery flags/caps to schema and inputs
+- OperatingModule now separates taxes/insurance/CAM and applies recoveries/admin fees
+- Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/types/inputs.ts, services/deal-engine/src/modules/operating/operating-module.ts
 - Build: pnpm --filter @gpc/deal-engine build && test
 ```
 
