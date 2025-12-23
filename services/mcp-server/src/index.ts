@@ -1026,9 +1026,9 @@ function ensureRolloverCoverage(inputs: Record<string, unknown>): { inputs: Reco
         // Add 5% market bump for new lease
         const marketRent = Math.round(inflatedRent * 1.05 * 100) / 100;
 
-        // Note: sf is inherited from original tenant, not specified in market_rollover schema
         const rolloverEntry = {
           tenant_name: `${tenantName} (Renewal)`,
+          sf: sf,
           market_rent_psf_annual: marketRent,
           annual_bump_pct: bumpPct ?? 0.03,
           lease_start: rolloverStart.toISOString().split("T")[0],

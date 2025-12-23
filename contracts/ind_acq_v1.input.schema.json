@@ -244,6 +244,7 @@
             "required": ["tenant_name", "market_rent_psf_annual", "lease_start", "lease_end"],
             "properties": {
               "tenant_name": { "type": "string" },
+              "sf": { "type": "number", "minimum": 0, "description": "Square footage for rollover tenant" },
               "market_rent_psf_annual": { "type": "number", "minimum": 0 },
               "annual_bump_pct": { "type": "number", "minimum": -0.1, "maximum": 0.2 },
               "lease_start": { "type": "string", "format": "date" },
