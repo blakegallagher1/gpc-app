@@ -20,7 +20,12 @@ const WIDGET_PUBLIC_URL = process.env.WIDGET_PUBLIC_URL ?? process.env.WIDGET_UR
 const MCP_PUBLIC_URL = process.env.MCP_PUBLIC_URL ?? `http://localhost:${PORT}`;
 // B2 download URL for CSP allow-list (defaults to common Backblaze endpoints)
 const B2_DOWNLOAD_URL = process.env.B2_DOWNLOAD_URL?.trim() ?? "";
+const DEAL_ENGINE_VALIDATE = process.env.DEAL_ENGINE_VALIDATE === "true";
 const MCP_PATH = "/mcp";
+
+// Cache build inputs for optional Deal Engine validation (keyed by job_id)
+const indAcqInputsByJobId = new Map<string, Record<string, unknown>>();
+const dealEngineValidationByJobId = new Map<string, ValidationComparison>();
 
 // Instrumentation logger - redacts sensitive info
 const log = {
@@ -253,6 +258,147 @@ function getWidgetHtml(): string {
   <script src="${WIDGET_PUBLIC_URL}/skybridge.js"></script>
 </body>
 </html>`;
+}
+
+interface DealEngineInputsV0 {
+  contract: { contract_version: "DEAL_ENGINE_V0"; engine_version: string };
+  deal: {
+    project_name: string;
+    city: string;
+    state: string;
+    analysis_start_date: string;
+    hold_period_months: number;
+    gross_sf: number;
+    net_sf: number;
+  };
+  modules: {
+    acquisition: { purchase_price: number; closing_cost_pct: number };
+    lease: { tenants_in_place: unknown[]; market_rollover?: unknown[] };
+    operating?: {
+      vacancy_pct: number;
+      credit_loss_pct: number;
+      inflation: { rent: number; expenses: number; taxes: number };
+      expenses: { recoveries: { mode: string } };
+    };
+    debt?: { acquisition_loan: { ltv_max: number; rate: number; amort_years: number; io_months: number; term_months: number } };
+    exit: { exit_cap_rate: number; exit_month: number; sale_cost_pct: number; forward_noi_months?: number };
+  };
+}
+
+function transformToDealEngineV0(indAcq: Record<string, unknown>): DealEngineInputsV0 {
+  const deal = indAcq.deal as Record<string, unknown>;
+  const acq = indAcq.acquisition as Record<string, unknown>;
+  const rentRoll = indAcq.rent_roll as Record<string, unknown>;
+  const op = indAcq.operating as Record<string, unknown>;
+  const debt = indAcq.debt as Record<string, unknown>;
+  const exit = indAcq.exit as Record<string, unknown>;
+  const debtLoan = (debt?.acquisition_loan as Record<string, unknown>) ?? {};
+  const debtRate = (debtLoan.rate as Record<string, unknown>) ?? {};
+
+  return {
+    contract: { contract_version: "DEAL_ENGINE_V0", engine_version: "0.1.0" },
+    deal: {
+      project_name: (deal?.project_name as string) ?? "Unnamed",
+      city: (deal?.city as string) ?? "",
+      state: (deal?.state as string) ?? "",
+      analysis_start_date: (deal?.analysis_start_date as string) ?? "",
+      hold_period_months: (deal?.hold_period_months as number) ?? 60,
+      gross_sf: (deal?.gross_sf as number) ?? 0,
+      net_sf: (deal?.net_sf as number) ?? 0,
+    },
+    modules: {
+      acquisition: {
+        purchase_price: (acq?.purchase_price as number) ?? 0,
+        closing_cost_pct: (acq?.closing_cost_pct as number) ?? 0.015,
+      },
+      lease: {
+        tenants_in_place: (rentRoll?.tenants_in_place as unknown[]) ?? [],
+        market_rollover: rentRoll?.market_rollover as unknown[] | undefined,
+      },
+      operating: op
+        ? {
+            vacancy_pct: (op.vacancy_pct as number) ?? 0.05,
+            credit_loss_pct: (op.credit_loss_pct as number) ?? 0.02,
+            inflation: (op.inflation as { rent: number; expenses: number; taxes: number }) ?? { rent: 0.03, expenses: 0.025, taxes: 0.02 },
+            expenses: {
+              recoveries: { mode: (((op.expenses as Record<string, unknown>)?.recoveries as Record<string, unknown>)?.mode as string) ?? "NNN" },
+            },
+          }
+        : undefined,
+      debt: debtLoan.ltv_max
+        ? {
+            acquisition_loan: {
+              ltv_max: debtLoan.ltv_max as number,
+              rate: (debtRate.fixed_rate as number) ?? 0.065,
+              amort_years: (debtLoan.amort_years as number) ?? 25,
+              io_months: (debtLoan.io_months as number) ?? 12,
+              term_months: (debtLoan.term_months as number) ?? 60,
+            },
+          }
+        : undefined,
+      exit: {
+        exit_cap_rate: (exit?.exit_cap_rate as number) ?? 0.07,
+        exit_month: (exit?.exit_month as number) ?? 60,
+        sale_cost_pct: (exit?.sale_cost_pct as number) ?? 0.02,
+        forward_noi_months: exit?.forward_noi_months as number | undefined,
+      },
+    },
+  };
+}
+
+interface ValidationComparison {
+  enabled: boolean;
+  dealEngineSuccess?: boolean;
+  discrepancies?: { metric: string; excel: number; dealEngine: number; pctDiff: number }[];
+  error?: string;
+}
+
+async function runDealEngineValidation(
+  inputs: Record<string, unknown>,
+  excelOutputs: Record<string, unknown>
+): Promise<ValidationComparison> {
+  if (!DEAL_ENGINE_VALIDATE) return { enabled: false };
+
+  try {
+    // @ts-expect-error - @gpc/deal-engine is optional; dynamically imported only when DEAL_ENGINE_VALIDATE=true
+    const { DealEngine } = await import("@gpc/deal-engine");
+    const engine = new DealEngine();
+    const transformed = transformToDealEngineV0(inputs);
+    const result = await engine.run(transformed);
+
+    if (!result.success || !result.context) {
+      return { enabled: true, dealEngineSuccess: false, error: result.errors?.join("; ") };
+    }
+
+    const m = result.context.metrics;
+    const discrepancies: { metric: string; excel: number; dealEngine: number; pctDiff: number }[] = [];
+
+    const comparisons = [
+      { metric: "unlevered_irr", excel: excelOutputs["out.returns.unlevered.irr"] as number, de: m.unleveredIrr },
+      { metric: "levered_irr", excel: excelOutputs["out.returns.levered.irr"] as number, de: m.leveredIrr },
+      { metric: "year1_noi", excel: excelOutputs["out.cashflow.year_1_noi"] as number, de: m.noiYear1 },
+    ];
+
+    for (const c of comparisons) {
+      if (c.excel != null && c.de != null) {
+        const pctDiff = Math.abs((c.excel - c.de) / (c.excel || 1)) * 100;
+        if (pctDiff > 1) {
+          discrepancies.push({ metric: c.metric, excel: c.excel, dealEngine: c.de, pctDiff });
+          log.warn("Deal Engine validation discrepancy", {
+            metric: c.metric,
+            excel: c.excel,
+            dealEngine: c.de,
+            pctDiff: pctDiff.toFixed(2) + "%",
+          });
+        }
+      }
+    }
+
+    return { enabled: true, dealEngineSuccess: true, discrepancies: discrepancies.length > 0 ? discrepancies : undefined };
+  } catch (e) {
+    log.warn("Deal Engine validation failed", { error: String(e) });
+    return { enabled: true, dealEngineSuccess: false, error: String(e) };
+  }
 }
 
 function createIndAcqServer() {
@@ -496,6 +642,11 @@ function createIndAcqServer() {
 
       log.info("Model build started", { requestId, job_id: payload.job_id });
 
+      if (DEAL_ENGINE_VALIDATE) {
+        indAcqInputsByJobId.set(payload.job_id, mergedInputs);
+        dealEngineValidationByJobId.delete(payload.job_id);
+      }
+
       return buildToolResponse({
         status: "started",
         job_id: payload.job_id,
@@ -566,24 +717,51 @@ function createIndAcqServer() {
       }
 
       if (status === "complete") {
+        const outputs = (payload.outputs ?? {}) as Record<string, unknown>;
+
         // Log completion with redacted download_url
         log.info("Job complete", {
           job_id: jobId,
           download_url: payload.download_url ? "[URL_PRESENT]" : null,
           warning: payload.warning ?? null,
         });
+
+        let dealEngineValidation: ValidationComparison = { enabled: false };
+        if (DEAL_ENGINE_VALIDATE) {
+          dealEngineValidation = dealEngineValidationByJobId.get(jobId) ?? { enabled: true, dealEngineSuccess: false, error: "Validation not run." };
+
+          if (!dealEngineValidationByJobId.has(jobId)) {
+            const cachedInputs = indAcqInputsByJobId.get(jobId);
+            if (cachedInputs) {
+              dealEngineValidation = await runDealEngineValidation(cachedInputs, outputs);
+              indAcqInputsByJobId.delete(jobId);
+              dealEngineValidationByJobId.set(jobId, dealEngineValidation);
+            } else {
+              dealEngineValidation = {
+                enabled: true,
+                dealEngineSuccess: false,
+                error: "Validation enabled but inputs were not cached for this job_id (likely server restart).",
+              };
+              dealEngineValidationByJobId.set(jobId, dealEngineValidation);
+            }
+          }
+        }
+
         return buildToolResponse({
           status,
           job_id: jobId,
-          outputs: payload.outputs ?? {},
+          outputs,
           file_path: payload.file_path ?? null,
           download_url: payload.download_url ?? null,
           download_url_expiry: payload.download_url_expiry ?? null,
           warning: payload.warning ?? null,
+          deal_engine_validation: dealEngineValidation,
         });
       }
 
       if (status === "failed") {
+        indAcqInputsByJobId.delete(jobId);
+        dealEngineValidationByJobId.delete(jobId);
         log.error("Job failed", { job_id: jobId, error: payload.error });
         return buildToolResponse({
           status,
@@ -1073,7 +1251,16 @@ type ToolResult =
   | { status: "started"; job_id: string; rollover_notes?: string[] }
   | { status: "pending"; job_id: string }
   | { status: "running"; job_id: string }
-  | { status: "complete"; job_id: string; outputs: Record<string, unknown>; file_path: string | null; download_url: string | null; download_url_expiry: string | null; warning?: string | null }
+  | {
+      status: "complete";
+      job_id: string;
+      outputs: Record<string, unknown>;
+      file_path: string | null;
+      download_url: string | null;
+      download_url_expiry: string | null;
+      warning?: string | null;
+      deal_engine_validation?: ValidationComparison;
+    }
   | { status: "failed"; job_id?: string; error: string };
 
 const httpServer = createServer(async (req, res) => {

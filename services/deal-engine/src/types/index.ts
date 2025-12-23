@@ -1,3 +1,3 @@
-export * from "./context";
-export * from "./inputs";
-export * from "./module";
+export * from "./context.js";
+export * from "./inputs.js";
+export * from "./module.js";

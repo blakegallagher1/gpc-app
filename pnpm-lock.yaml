@@ -68,6 +68,18 @@ importers:
         specifier: ^5.5.4
         version: 5.9.3
 
+  services/template-library:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.16.5
+        version: 20.19.27
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.27)
+
   web/widget:
     dependencies:
       next:

@@ -1,12 +1,14 @@
-import { Timeline } from "../core/timeline";
-import { Series } from "../core/series";
-import { DealContext, DealMetrics } from "../types/context";
-import { DealEngineInputs } from "../types/inputs";
-import { Module, ValidationResult, ValidationError } from "../types/module";
-import { LeaseModule } from "../modules/lease/lease-module";
-import { OperatingModule } from "../modules/operating/operating-module";
-import { DebtModule } from "../modules/debt/debt-module";
-import { ExitModule } from "../modules/exit/exit-module";
+import { Timeline } from "../core/timeline.js";
+import { Series } from "../core/series.js";
+import { DealContext, DealMetrics } from "../types/context.js";
+import { DealEngineInputs } from "../types/inputs.js";
+import { Module, ValidationResult, ValidationError } from "../types/module.js";
+import { LeaseModule } from "../modules/lease/lease-module.js";
+import { OperatingModule } from "../modules/operating/operating-module.js";
+import { DebtModule } from "../modules/debt/debt-module.js";
+import { ExitModule } from "../modules/exit/exit-module.js";
+import { WaterfallModule } from "../modules/waterfall/waterfall-module.js";
+import { ScenarioRunner } from "../modules/scenario/scenario-runner.js";
 
 export interface DealEngineResult {
   success: boolean;
@@ -30,6 +32,8 @@ export class DealEngine {
       new OperatingModule(),
       new DebtModule(),
       new ExitModule(),
+      new WaterfallModule(),
+      new ScenarioRunner(),
     ];
   }
 
@@ -162,6 +166,10 @@ export class DealEngine {
         return inputs.modules?.debt;
       case "exit":
         return inputs.modules?.exit;
+      case "waterfall":
+        return inputs.modules?.waterfall;
+      case "scenario":
+        return inputs.modules?.scenario;
       default:
         return undefined;
     }

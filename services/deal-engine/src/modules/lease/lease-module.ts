@@ -1,12 +1,12 @@
 import { DateTime } from "luxon";
-import { Series } from "../../core/series";
-import { DealContext } from "../../types/context";
+import { Series } from "../../core/series.js";
+import { DealContext } from "../../types/context.js";
 import {
   InPlaceTenantInput,
   LeaseInput,
   MarketRolloverTenantInput,
-} from "../../types/inputs";
-import { Module, ModuleResult, ValidationResult } from "../../types/module";
+} from "../../types/inputs.js";
+import { Module, ModuleResult, ValidationResult } from "../../types/module.js";
 
 export interface TenantSchedule {
   tenantName: string;
@@ -55,7 +55,7 @@ export class LeaseModule implements Module<LeaseModuleOutputs> {
 
     const leaseInputs = inputs as LeaseInput;
 
-    leaseInputs.tenants_in_place.forEach((tenant, idx) => {
+    leaseInputs.tenants_in_place.forEach((tenant: InPlaceTenantInput, idx: number) => {
       if (!tenant.tenant_name) {
         errors.push({
           path: `tenants_in_place[${idx}].tenant_name`,
@@ -77,7 +77,7 @@ export class LeaseModule implements Module<LeaseModuleOutputs> {
     });
 
     if (leaseInputs.market_rollover) {
-      leaseInputs.market_rollover.forEach((tenant, idx) => {
+      leaseInputs.market_rollover.forEach((tenant: MarketRolloverTenantInput, idx: number) => {
         if (!tenant.tenant_name) {
           errors.push({
             path: `market_rollover[${idx}].tenant_name`,

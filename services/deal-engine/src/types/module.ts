@@ -1,4 +1,4 @@
-import { DealContext } from "./context";
+import { DealContext } from "./context.js";
 
 export interface ValidationResult {
   valid: boolean;

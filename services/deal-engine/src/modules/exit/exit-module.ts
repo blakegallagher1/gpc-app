@@ -1,10 +1,10 @@
-import { Series } from "../../core/series";
-import { irr } from "../../core/math-utils";
-import { DealContext } from "../../types/context";
-import { ExitInput } from "../../types/inputs";
-import { Module, ModuleResult, ValidationResult } from "../../types/module";
-import { OperatingModuleOutputs } from "../operating/operating-module";
-import { DebtModuleOutputs } from "../debt/debt-module";
+import { Series } from "../../core/series.js";
+import { irr } from "../../core/math-utils.js";
+import { DealContext } from "../../types/context.js";
+import { ExitInput } from "../../types/inputs.js";
+import { Module, ModuleResult, ValidationResult } from "../../types/module.js";
+import { OperatingModuleOutputs } from "../operating/operating-module.js";
+import { DebtModuleOutputs } from "../debt/debt-module.js";
 
 export interface ExitModuleOutputs {
   forwardNoi: number;

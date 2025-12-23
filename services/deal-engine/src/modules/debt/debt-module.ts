@@ -1,9 +1,9 @@
-import { Series } from "../../core/series";
-import { pmt, annualToMonthly } from "../../core/math-utils";
-import { DealContext } from "../../types/context";
-import { DebtInput } from "../../types/inputs";
-import { Module, ModuleResult, ValidationResult } from "../../types/module";
-import { OperatingModuleOutputs } from "../operating/operating-module";
+import { Series } from "../../core/series.js";
+import { pmt, annualToMonthly } from "../../core/math-utils.js";
+import { DealContext } from "../../types/context.js";
+import { DebtInput } from "../../types/inputs.js";
+import { Module, ModuleResult, ValidationResult } from "../../types/module.js";
+import { OperatingModuleOutputs } from "../operating/operating-module.js";
 
 export interface DebtModuleOutputs {
   loanAmount: number;

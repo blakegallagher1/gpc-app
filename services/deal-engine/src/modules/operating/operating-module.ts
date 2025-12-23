@@ -1,8 +1,8 @@
-import { Series } from "../../core/series";
-import { DealContext } from "../../types/context";
-import { OperatingInput } from "../../types/inputs";
-import { Module, ModuleResult, ValidationResult } from "../../types/module";
-import { LeaseModuleOutputs } from "../lease/lease-module";
+import { Series } from "../../core/series.js";
+import { DealContext } from "../../types/context.js";
+import { OperatingInput } from "../../types/inputs.js";
+import { Module, ModuleResult, ValidationResult } from "../../types/module.js";
+import { LeaseModuleOutputs } from "../lease/lease-module.js";
 
 export interface OperatingModuleOutputs {
   vacancyLoss: Series;
