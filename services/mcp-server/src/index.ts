@@ -307,7 +307,6 @@ function createIndAcqServer() {
         json_schema: toolInputJsonSchemas.validate_inputs,
         securitySchemes: [{ type: "noauth" }],
         "openai/visibility": "private",
-        "openai/outputTemplate": "ui://widget/ind-acq",
         "openai/widgetAccessible": true,
         "openai/toolInvocation/invoking": "Validating underwriting inputs...",
         "openai/toolInvocation/invoked": "Input validation complete",
