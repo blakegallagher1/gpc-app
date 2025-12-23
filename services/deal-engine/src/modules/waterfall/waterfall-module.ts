@@ -38,7 +38,11 @@ function isWaterfallTier(value: unknown): value is WaterfallTierInput {
     return false;
   }
   const tier = value as Record<string, unknown>;
-  return typeof tier.hurdle_irr === "number" && typeof tier.promote_split === "number";
+  const hasSplit =
+    typeof tier.promote_split === "number" ||
+    typeof tier.lp_split === "number" ||
+    typeof tier.gp_split === "number";
+  return typeof tier.hurdle_irr === "number" && hasSplit;
 }
 
 export class WaterfallModule implements Module<WaterfallModuleOutputs> {
@@ -70,7 +74,7 @@ export class WaterfallModule implements Module<WaterfallModuleOutputs> {
         if (!isWaterfallTier(tier)) {
           errors.push({
             path: `waterfall.tiers[${idx}]`,
-            message: "tier must include hurdle_irr and promote_split",
+            message: "tier must include hurdle_irr and at least one split",
           });
           return;
         }
@@ -80,10 +84,32 @@ export class WaterfallModule implements Module<WaterfallModuleOutputs> {
             message: "hurdle_irr must be between 0 and 1",
           });
         }
-        if (tier.promote_split < 0 || tier.promote_split > 1) {
+        if (tier.promote_split !== undefined && (tier.promote_split < 0 || tier.promote_split > 1)) {
           errors.push({
             path: `waterfall.tiers[${idx}].promote_split`,
             message: "promote_split must be between 0 and 1",
+          });
+        }
+        if (tier.lp_split !== undefined && (tier.lp_split < 0 || tier.lp_split > 1)) {
+          errors.push({
+            path: `waterfall.tiers[${idx}].lp_split`,
+            message: "lp_split must be between 0 and 1",
+          });
+        }
+        if (tier.gp_split !== undefined && (tier.gp_split < 0 || tier.gp_split > 1)) {
+          errors.push({
+            path: `waterfall.tiers[${idx}].gp_split`,
+            message: "gp_split must be between 0 and 1",
+          });
+        }
+        if (
+          tier.lp_split !== undefined &&
+          tier.gp_split !== undefined &&
+          tier.lp_split + tier.gp_split > 1
+        ) {
+          errors.push({
+            path: `waterfall.tiers[${idx}]`,
+            message: "lp_split plus gp_split must be less than or equal to 1",
           });
         }
       });

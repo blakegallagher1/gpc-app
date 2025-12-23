@@ -444,6 +444,48 @@
           "required": ["enabled"],
           "properties": {
             "enabled": { "type": "boolean", "default": false, "description": "Whether to apply a promote waterfall." },
+            "structure": {
+              "type": "string",
+              "enum": ["pro_rata", "tiered"],
+              "description": "Waterfall structure type."
+            },
+            "lp_classes": {
+              "type": "array",
+              "description": "Optional LP class definitions for tiered structures.",
+              "maxItems": 8,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["class_id", "equity_pct"],
+                "properties": {
+                  "class_id": { "type": "string", "minLength": 1, "description": "LP class identifier." },
+                  "equity_pct": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Equity share for this class."
+                  },
+                  "pref_irr": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Preferred return IRR for the class."
+                  },
+                  "promote_split": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Promote split for the class."
+                  },
+                  "catch_up_pct": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Catch-up percentage for the class."
+                  }
+                }
+              }
+            },
             "tiers": {
               "type": "array",
               "description": "Waterfall tiers, in ascending order of hurdles.",
@@ -452,7 +494,7 @@
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["hurdle_irr", "promote_split"],
+                "required": ["hurdle_irr"],
                 "properties": {
                   "hurdle_irr": {
                     "type": "number",
@@ -465,6 +507,24 @@
                     "minimum": 0,
                     "maximum": 1,
                     "description": "Promote split (decimal; e.g., 0.2 for 20% promote)."
+                  },
+                  "lp_split": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "LP split for the tier."
+                  },
+                  "gp_split": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "GP split for the tier."
+                  },
+                  "catch_up_pct": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Catch-up percentage for the tier."
                   }
                 }
               }

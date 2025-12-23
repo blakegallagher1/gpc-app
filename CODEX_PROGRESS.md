@@ -161,11 +161,11 @@ These enable "structure the deal however I want."
 ---
 
 ### B6. Equity Waterfall Beyond Pro-Rata
-- [ ] Schema scaffold for promotes/catch-ups
-- [ ] Multiple LP classes
-- [ ] Preferred return tiers
-- [ ] GP promote above hurdles
-- [ ] Catch-up provisions
+- [x] Schema scaffold for promotes/catch-ups
+- [x] Multiple LP classes
+- [x] Preferred return tiers
+- [x] GP promote above hurdles
+- [x] Catch-up provisions
 
 **Current Status:** WaterfallModule exists with pro-rata 90/10 only.
 
@@ -370,6 +370,11 @@ Use this section to log progress during work sessions.
 - Added economics_mode + rent_steps to schema and inputs
 - LeaseModule now supports step schedules and validates rent_steps
 - Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/types/inputs.ts, services/deal-engine/src/modules/lease/lease-module.ts
+- Build: pnpm --filter @gpc/deal-engine build && test
+2025-12-23 02:04 - [B6] Added equity waterfall schema scaffold
+- Added structure, LP classes, and expanded tier splits in schema + inputs
+- Relaxed WaterfallModule validation to accept tier split scaffolding
+- Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/types/inputs.ts, services/deal-engine/src/modules/waterfall/waterfall-module.ts, services/deal-engine/src/index.ts
 - Build: pnpm --filter @gpc/deal-engine build && test
 ```
 

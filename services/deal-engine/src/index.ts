@@ -34,6 +34,7 @@ export type {
   DebtInput,
   ExitInput,
   WaterfallTierInput,
+  WaterfallLpClassInput,
   WaterfallInput,
   ScenarioExitCapRangeInput,
   ScenarioExitMonthRangeInput,

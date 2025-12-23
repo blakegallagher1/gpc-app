@@ -142,17 +142,32 @@ export interface ExitInput {
 
 export interface WaterfallTierInput {
   hurdle_irr: number;
-  promote_split: number;
+  promote_split?: number;
+  lp_split?: number;
+  gp_split?: number;
+  catch_up_pct?: number;
+}
+
+export interface WaterfallLpClassInput {
+  class_id: string;
+  equity_pct: number;
+  pref_irr?: number;
+  promote_split?: number;
+  catch_up_pct?: number;
 }
 
 export type WaterfallInput =
   | {
       enabled: false;
       tiers?: WaterfallTierInput[];
+      structure?: "pro_rata" | "tiered";
+      lp_classes?: WaterfallLpClassInput[];
     }
   | {
       enabled: true;
       tiers: WaterfallTierInput[];
+      structure?: "pro_rata" | "tiered";
+      lp_classes?: WaterfallLpClassInput[];
     };
 
 export interface ScenarioExitCapRangeInput {
