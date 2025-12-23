@@ -215,11 +215,11 @@ These enable "structure the deal however I want."
 ---
 
 ### C2. Market Rollover Economics
-- [ ] Validate market_rollover table mapping
-- [ ] UI support for rollover inputs
-- [ ] Downtime months per tenant
-- [ ] Free rent at rollover
-- [ ] TI/LC at rollover
+- [!] Validate market_rollover table mapping
+- [!] UI support for rollover inputs
+- [!] Downtime months per tenant
+- [!] Free rent at rollover
+- [!] TI/LC at rollover
 
 ---
 
@@ -401,6 +401,10 @@ Use this section to log progress during work sessions.
 - Requires manual Excel template inspection/repair and recalculation to validate NOI aggregation
 - Files: templates/IND_ACQ_MT.xlsx, contracts/ind_acq_v1.output.mapping.json
 - Blocker: no automated template QA or formula map available in repo to safely repair
+2025-12-23 02:18 - [C2] Market rollover economics blocked
+- Requires template mapping verification and UI wiring beyond current deal-engine implementation
+- Files: templates/IND_ACQ_MT.xlsx, contracts/ind_acq_v1.output.mapping.json, web/widget
+- Blocker: needs template/table spec and expected mapping for rollover rows
 ```
 
 ---
