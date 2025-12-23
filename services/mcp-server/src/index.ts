@@ -378,10 +378,20 @@ function createIndAcqServer() {
           };
 
           // If critical fields are missing, return needs_info
+          // Only block on truly critical missing fields (exact match, not sub-fields)
           if (extraction.missing_fields && extraction.missing_fields.length > 0) {
-            const criticalMissing = extraction.missing_fields.filter((f) =>
-              CRITICAL_FIELDS.some((cf) => f.path.startsWith(cf))
-            );
+            const criticalMissing = extraction.missing_fields.filter((f) => {
+              // Exact match check - don't match sub-fields of arrays
+              // e.g., "rent_roll.tenants_in_place" is critical, but
+              // "rent_roll.tenants_in_place[0].lease_start" is not
+              return CRITICAL_FIELDS.some((cf) => {
+                if (f.path === cf) return true;
+                // For non-array critical fields, check if it's an exact path match
+                // Don't match array element sub-fields like [0].lease_start
+                if (f.path.startsWith(cf) && !f.path.includes("[")) return true;
+                return false;
+              });
+            });
 
             if (criticalMissing.length > 0) {
               return buildToolResponse({
