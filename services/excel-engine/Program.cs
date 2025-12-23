@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Linq;
+using Microsoft.Data.Sqlite;
 using OfficeOpenXml;
 using OfficeOpenXml.Table;
 
@@ -97,7 +98,9 @@ var app = builder.Build();
 
 ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
-var jobs = new ConcurrentDictionary<string, JobState>();
+var jobDbPath = Environment.GetEnvironmentVariable("JOB_DB_PATH")
+    ?? Path.Combine(Directory.GetCurrentDirectory(), "data", "jobs.db");
+var jobStore = new JobStore(jobDbPath);
 
 // Template registry: template_id -> { version -> filename }
 var templateRegistry = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
@@ -399,13 +402,13 @@ app.MapPost("/v1/ind-acq/build", async (HttpRequest request) =>
 
     var jobId = Guid.NewGuid().ToString("N");
     var job = new JobState { Status = JobStatus.Pending, Warning = templateWarning };
-    jobs[jobId] = job;
+    jobStore.Create(jobId, job);
 
     _ = Task.Run(async () =>
     {
         try
         {
-            await RunJobAsync(jobId, job, buildRequest, b2Client);
+            await RunJobAsync(jobId, job, buildRequest, b2Client, jobStore);
         }
         finally
         {
@@ -418,7 +421,7 @@ app.MapPost("/v1/ind-acq/build", async (HttpRequest request) =>
 
 app.MapGet("/v1/jobs/{jobId}", (string jobId) =>
 {
-    if (!jobs.TryGetValue(jobId, out var job))
+    if (!jobStore.TryGet(jobId, out var job))
     {
         return Results.NotFound(new { error = "job_not_found" });
     }
@@ -437,9 +440,10 @@ app.MapGet("/v1/jobs/{jobId}", (string jobId) =>
 
 app.Run();
 
-static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, B2Client? b2Client)
+static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, B2Client? b2Client, JobStore jobStore)
 {
     job.Status = JobStatus.Running;
+    jobStore.Update(jobId, job);
     LogStructured("INFO", "Job starting", new { jobId, templatePath = request.TemplatePath });
 
     try
@@ -609,6 +613,7 @@ static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, 
 
         job.Outputs = outputs;
         job.FilePath = outputPath;
+        jobStore.Update(jobId, job);
 
         // Upload to Backblaze B2 if configured
         if (b2Client != null)
@@ -637,6 +642,7 @@ static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, 
                     });
                     job.DownloadUrl = uploadResult.DownloadUrl;
                     job.DownloadUrlExpiry = uploadResult.ExpiresAt ?? DateTime.UtcNow.AddHours(1);
+                    jobStore.Update(jobId, job);
 
                     // Clean up temp file after successful B2 upload
                     try
@@ -665,6 +671,7 @@ static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, 
         }
 
         job.Status = JobStatus.Complete;
+        jobStore.Update(jobId, job);
     }
     catch (Exception ex)
     {
@@ -672,6 +679,7 @@ static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, 
         DebugState.RecordError(jobId, "RunJobAsync", ex);
         job.Error = ex.Message;
         job.Status = JobStatus.Failed;
+        jobStore.Update(jobId, job);
     }
 }
 
@@ -2003,6 +2011,176 @@ sealed class JobState
     public string? FilePath { get; set; }
     public string? DownloadUrl { get; set; }
     public DateTime? DownloadUrlExpiry { get; set; }
+}
+
+sealed class JobStore
+{
+    private readonly ConcurrentDictionary<string, JobState> _jobs = new();
+    private readonly string _dbPath;
+    private readonly object _dbLock = new();
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    public JobStore(string dbPath)
+    {
+        _dbPath = dbPath;
+        var dir = Path.GetDirectoryName(_dbPath);
+        if (!string.IsNullOrEmpty(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+        InitializeDatabase();
+        LoadJobs();
+    }
+
+    public bool TryGet(string jobId, out JobState job)
+    {
+        return _jobs.TryGetValue(jobId, out job!);
+    }
+
+    public void Create(string jobId, JobState job)
+    {
+        _jobs[jobId] = job;
+        PersistJob(jobId, job);
+    }
+
+    public void Update(string jobId, JobState job)
+    {
+        _jobs[jobId] = job;
+        PersistJob(jobId, job);
+    }
+
+    private void InitializeDatabase()
+    {
+        using var connection = new SqliteConnection($"Data Source={_dbPath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+CREATE TABLE IF NOT EXISTS jobs (
+  job_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL,
+  outputs_json TEXT,
+  warning TEXT,
+  error TEXT,
+  file_path TEXT,
+  download_url TEXT,
+  download_url_expiry TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);";
+        command.ExecuteNonQuery();
+    }
+
+    private void LoadJobs()
+    {
+        using var connection = new SqliteConnection($"Data Source={_dbPath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+SELECT job_id, status, outputs_json, warning, error, file_path, download_url, download_url_expiry
+FROM jobs;";
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var jobId = reader.GetString(0);
+            var status = reader.GetString(1);
+            var outputsJson = reader.IsDBNull(2) ? null : reader.GetString(2);
+            var warning = reader.IsDBNull(3) ? null : reader.GetString(3);
+            var error = reader.IsDBNull(4) ? null : reader.GetString(4);
+            var filePath = reader.IsDBNull(5) ? null : reader.GetString(5);
+            var downloadUrl = reader.IsDBNull(6) ? null : reader.GetString(6);
+            var downloadUrlExpiryRaw = reader.IsDBNull(7) ? null : reader.GetString(7);
+
+            Dictionary<string, object?>? outputs = null;
+            if (!string.IsNullOrEmpty(outputsJson))
+            {
+                try
+                {
+                    outputs = JsonSerializer.Deserialize<Dictionary<string, object?>>(outputsJson, JsonOptions);
+                }
+                catch
+                {
+                    outputs = null;
+                }
+            }
+
+            DateTime? downloadUrlExpiry = null;
+            if (!string.IsNullOrEmpty(downloadUrlExpiryRaw) &&
+                DateTime.TryParse(downloadUrlExpiryRaw, null, System.Globalization.DateTimeStyles.RoundtripKind, out var parsed))
+            {
+                downloadUrlExpiry = parsed;
+            }
+
+            var job = new JobState
+            {
+                Status = status,
+                Outputs = outputs,
+                Warning = warning,
+                Error = error,
+                FilePath = filePath,
+                DownloadUrl = downloadUrl,
+                DownloadUrlExpiry = downloadUrlExpiry
+            };
+            _jobs[jobId] = job;
+        }
+    }
+
+    private void PersistJob(string jobId, JobState job)
+    {
+        lock (_dbLock)
+        {
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            connection.Open();
+
+            var outputsJson = job.Outputs != null
+                ? JsonSerializer.Serialize(job.Outputs, JsonOptions)
+                : null;
+
+            var now = DateTime.UtcNow.ToString("O");
+            var createdAt = GetOrCreateCreatedAt(connection, jobId, now);
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+INSERT INTO jobs (
+  job_id, status, outputs_json, warning, error, file_path, download_url, download_url_expiry, created_at, updated_at
+) VALUES (
+  $job_id, $status, $outputs_json, $warning, $error, $file_path, $download_url, $download_url_expiry, $created_at, $updated_at
+)
+ON CONFLICT(job_id) DO UPDATE SET
+  status = excluded.status,
+  outputs_json = excluded.outputs_json,
+  warning = excluded.warning,
+  error = excluded.error,
+  file_path = excluded.file_path,
+  download_url = excluded.download_url,
+  download_url_expiry = excluded.download_url_expiry,
+  updated_at = excluded.updated_at;";
+            command.Parameters.AddWithValue("$job_id", jobId);
+            command.Parameters.AddWithValue("$status", job.Status);
+            command.Parameters.AddWithValue("$outputs_json", (object?)outputsJson ?? DBNull.Value);
+            command.Parameters.AddWithValue("$warning", (object?)job.Warning ?? DBNull.Value);
+            command.Parameters.AddWithValue("$error", (object?)job.Error ?? DBNull.Value);
+            command.Parameters.AddWithValue("$file_path", (object?)job.FilePath ?? DBNull.Value);
+            command.Parameters.AddWithValue("$download_url", (object?)job.DownloadUrl ?? DBNull.Value);
+            command.Parameters.AddWithValue("$download_url_expiry",
+                (object?)job.DownloadUrlExpiry?.ToString("O") ?? DBNull.Value);
+
+            command.Parameters.AddWithValue("$created_at", createdAt);
+            command.Parameters.AddWithValue("$updated_at", now);
+
+            command.ExecuteNonQuery();
+        }
+    }
+
+    private static string GetOrCreateCreatedAt(SqliteConnection connection, string jobId, string fallback)
+    {
+        using var select = connection.CreateCommand();
+        select.CommandText = "SELECT created_at FROM jobs WHERE job_id = $job_id;";
+        select.Parameters.AddWithValue("$job_id", jobId);
+        var existing = select.ExecuteScalar() as string;
+        return string.IsNullOrWhiteSpace(existing) ? fallback : existing;
+    }
 }
 
 static class JobStatus

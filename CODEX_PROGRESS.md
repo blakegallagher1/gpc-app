@@ -249,9 +249,9 @@ These enable "structure the deal however I want."
 ## E. Reliability / Scale Features
 
 ### E1. Job Persistence
-- [ ] Excel engine job store is in-memory
-- [ ] Add Redis or SQLite persistence
-- [ ] Jobs survive server restart
+- [x] Excel engine job store is in-memory
+- [x] Add Redis or SQLite persistence
+- [x] Jobs survive server restart
 
 ---
 
@@ -436,6 +436,11 @@ Use this section to log progress during work sessions.
 - Added ScenarioRunner outputs to structured response when scenario.enabled=true
 - File: services/mcp-server/src/index.ts
 - Build: pnpm --filter @gpc/mcp-server build
+2025-12-23 11:03 - [E1] Added SQLite job persistence for excel-engine
+- Replaced in-memory job store with SQLite-backed JobStore
+- Jobs survive restarts; outputs/errors/URLs persisted
+- Files: services/excel-engine/Program.cs, services/excel-engine/excel-engine.csproj
+- Build: dotnet build services/excel-engine/excel-engine.csproj (warnings pre-existing)
 ```
 
 ---
