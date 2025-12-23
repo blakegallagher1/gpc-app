@@ -192,7 +192,7 @@ These enable "structure the deal however I want."
 - [x] Exit cap grid (7.0%-9.0%)
 - [x] Interest rate grid (5.5%-7.0%)
 - [x] Matrix output format for all combinations
-- [!] Integration with MCP response
+- [x] Integration with MCP response
 
 **Current Status:** ScenarioRunner exists with exit cap/month grid. Rate grid not implemented.
 
@@ -432,6 +432,10 @@ Use this section to log progress during work sessions.
 - Chicago deal now returns valid IRRs (unlevered 10.66%, levered 14.75%)
 - File: services/deal-engine/src/core/math-utils.ts
 - Build: pnpm --filter @gpc/deal-engine build && test
+2025-12-23 10:57 - [B7] Wired scenario grid into MCP response
+- Added ScenarioRunner outputs to structured response when scenario.enabled=true
+- File: services/mcp-server/src/index.ts
+- Build: pnpm --filter @gpc/mcp-server build
 ```
 
 ---

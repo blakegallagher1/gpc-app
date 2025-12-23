@@ -375,6 +375,13 @@ interface ValidationComparison {
   enabled: boolean;
   dealEngineSuccess?: boolean;
   discrepancies?: { metric: string; excel: number; dealEngine: number; pctDiff: number }[];
+  scenario?: {
+    baseCase: Record<string, unknown>;
+    grid: Record<string, unknown>;
+    exitCapRates: number[];
+    exitMonths: number[];
+    interestRates?: number[];
+  };
   error?: string;
 }
 
@@ -419,7 +426,28 @@ async function runDealEngineValidation(
       }
     }
 
-    return { enabled: true, dealEngineSuccess: true, discrepancies: discrepancies.length > 0 ? discrepancies : undefined };
+    const scenarioConfig = (transformed.modules as Record<string, unknown>)?.scenario as
+      | Record<string, unknown>
+      | undefined;
+    const scenarioEnabled = scenarioConfig?.enabled === true;
+    const scenarioOutputs = scenarioEnabled
+      ? (result.context.outputs.scenario as Record<string, unknown> | undefined)
+      : undefined;
+
+    return {
+      enabled: true,
+      dealEngineSuccess: true,
+      discrepancies: discrepancies.length > 0 ? discrepancies : undefined,
+      scenario: scenarioOutputs
+        ? {
+            baseCase: (scenarioOutputs.baseCase as Record<string, unknown>) ?? {},
+            grid: (scenarioOutputs.grid as Record<string, unknown>) ?? [],
+            exitCapRates: (scenarioOutputs.exitCapRates as number[]) ?? [],
+            exitMonths: (scenarioOutputs.exitMonths as number[]) ?? [],
+            interestRates: (scenarioOutputs.interestRates as number[]) ?? [],
+          }
+        : undefined,
+    };
   } catch (e) {
     log.warn("Deal Engine validation failed", { error: String(e) });
     return { enabled: true, dealEngineSuccess: false, error: String(e) };
@@ -841,6 +869,9 @@ function buildToolResponse(result: ToolResult) {
       download_url_expiry: result.download_url_expiry,
       // Include warning if MT template was quarantined
       ...(result.warning ? { warning: result.warning } : {}),
+      ...(result.deal_engine_validation?.scenario
+        ? { scenario: result.deal_engine_validation.scenario }
+        : {}),
     };
 
     // Full outputs in metadata for widget consumption
