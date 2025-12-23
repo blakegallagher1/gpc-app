@@ -55,6 +55,12 @@ export interface LeasingCommissionInput {
   value?: number;
 }
 
+export interface RentStepInput {
+  start_date: string;
+  end_date: string;
+  rent_psf: number;
+}
+
 export interface InPlaceTenantInput {
   tenant_name: string;
   sf: number;
@@ -62,6 +68,8 @@ export interface InPlaceTenantInput {
   lease_end: string;
   current_rent_psf_annual: number;
   annual_bump_pct?: number;
+  economics_mode?: "bump" | "steps";
+  rent_steps?: RentStepInput[];
   lease_type?: LeaseType;
   stop_amount_annual?: number;
   free_rent_months?: number;
@@ -75,6 +83,8 @@ export interface MarketRolloverTenantInput {
   sf?: number;
   market_rent_psf_annual: number;
   annual_bump_pct?: number;
+  economics_mode?: "bump" | "steps";
+  rent_steps?: RentStepInput[];
   lease_start: string;
   lease_end: string;
   lease_type?: LeaseType;

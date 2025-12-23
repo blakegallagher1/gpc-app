@@ -69,10 +69,10 @@ These enable "structure the deal however I want."
 ---
 
 ### B2. Explicit Rent Step Schedules
-- [ ] Add `rent_steps` array to tenant schema
-- [ ] Add `economics_mode` toggle: `"bump"` | `"steps"`
-- [ ] When mode=steps, ignore `annual_bump_pct`
-- [ ] LeaseModule: implement step schedule logic
+- [x] Add `rent_steps` array to tenant schema
+- [x] Add `economics_mode` toggle: `"bump"` | `"steps"`
+- [x] When mode=steps, ignore `annual_bump_pct`
+- [x] LeaseModule: implement step schedule logic
 
 **Schema Changes:**
 ```json
@@ -366,6 +366,11 @@ Use this section to log progress during work sessions.
 - Timeline now validates close_month; ExitModule shifts acquisition and operating cashflows
 - Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/core/timeline.ts, services/deal-engine/src/modules/exit/exit-module.ts, services/deal-engine/src/engine/deal-engine.ts, services/deal-engine/src/types/inputs.ts, services/mcp-server/src/index.ts
 - Build: pnpm --filter @gpc/deal-engine build && test; pnpm --filter @gpc/mcp-server build
+2025-12-23 02:02 - [B2] Added rent step schedules for tenant economics
+- Added economics_mode + rent_steps to schema and inputs
+- LeaseModule now supports step schedules and validates rent_steps
+- Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/types/inputs.ts, services/deal-engine/src/modules/lease/lease-module.ts
+- Build: pnpm --filter @gpc/deal-engine build && test
 ```
 
 ---

@@ -123,6 +123,26 @@
                     "maximum": 0.2,
                     "description": "Annual rent escalation (decimal)."
                   },
+                  "economics_mode": {
+                    "type": "string",
+                    "enum": ["bump", "steps"],
+                    "description": "Rent growth mode: annual bump or explicit step schedule."
+                  },
+                  "rent_steps": {
+                    "type": "array",
+                    "description": "Explicit rent steps (ignored unless economics_mode=steps).",
+                    "maxItems": 50,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["start_date", "end_date", "rent_psf"],
+                      "properties": {
+                        "start_date": { "type": "string", "format": "date", "description": "Step start date." },
+                        "end_date": { "type": "string", "format": "date", "description": "Step end date." },
+                        "rent_psf": { "type": "number", "minimum": 0, "description": "Rent ($/SF/year) for the step." }
+                      }
+                    }
+                  },
                   "lease_type": {
                     "type": "string",
                     "enum": ["NNN", "MOD_GROSS", "GROSS"],
@@ -191,6 +211,26 @@
                     "minimum": -0.1,
                     "maximum": 0.2,
                     "description": "Annual market rent escalation (decimal)."
+                  },
+                  "economics_mode": {
+                    "type": "string",
+                    "enum": ["bump", "steps"],
+                    "description": "Rent growth mode: annual bump or explicit step schedule."
+                  },
+                  "rent_steps": {
+                    "type": "array",
+                    "description": "Explicit rent steps (ignored unless economics_mode=steps).",
+                    "maxItems": 50,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["start_date", "end_date", "rent_psf"],
+                      "properties": {
+                        "start_date": { "type": "string", "format": "date", "description": "Step start date." },
+                        "end_date": { "type": "string", "format": "date", "description": "Step end date." },
+                        "rent_psf": { "type": "number", "minimum": 0, "description": "Rent ($/SF/year) for the step." }
+                      }
+                    }
                   },
                   "lease_start": { "type": "string", "format": "date", "description": "New lease start date." },
                   "lease_end": { "type": "string", "format": "date", "description": "New lease end date." },

@@ -5,6 +5,7 @@ import {
   InPlaceTenantInput,
   LeaseInput,
   MarketRolloverTenantInput,
+  RentStepInput,
 } from "../../types/inputs.js";
 import { Module, ModuleResult, ValidationResult } from "../../types/module.js";
 
@@ -36,6 +37,60 @@ function assertLeaseInput(inputs: unknown): asserts inputs is LeaseInput {
   if (!Array.isArray(inp.tenants_in_place)) {
     throw new TypeError("tenants_in_place must be an array");
   }
+}
+
+function validateRentSteps(
+  steps: unknown,
+  pathPrefix: string,
+  errors: { path: string; message: string }[]
+): void {
+  if (!Array.isArray(steps) || steps.length === 0) {
+    errors.push({
+      path: `${pathPrefix}.rent_steps`,
+      message: "rent_steps must be a non-empty array when economics_mode=steps",
+    });
+    return;
+  }
+
+  steps.forEach((step, idx) => {
+    if (!step || typeof step !== "object") {
+      errors.push({
+        path: `${pathPrefix}.rent_steps[${idx}]`,
+        message: "rent_step must be an object",
+      });
+      return;
+    }
+    const stepObj = step as Record<string, unknown>;
+    const start = stepObj.start_date;
+    const end = stepObj.end_date;
+    const rentPsf = stepObj.rent_psf;
+    if (typeof start !== "string" || typeof end !== "string") {
+      errors.push({
+        path: `${pathPrefix}.rent_steps[${idx}]`,
+        message: "start_date and end_date are required",
+      });
+    } else {
+      const startDate = DateTime.fromISO(start, { zone: "utc" });
+      const endDate = DateTime.fromISO(end, { zone: "utc" });
+      if (!startDate.isValid || !endDate.isValid) {
+        errors.push({
+          path: `${pathPrefix}.rent_steps[${idx}]`,
+          message: "start_date and end_date must be valid dates",
+        });
+      } else if (endDate <= startDate) {
+        errors.push({
+          path: `${pathPrefix}.rent_steps[${idx}].end_date`,
+          message: "end_date must be after start_date",
+        });
+      }
+    }
+    if (typeof rentPsf !== "number" || rentPsf < 0) {
+      errors.push({
+        path: `${pathPrefix}.rent_steps[${idx}].rent_psf`,
+        message: "rent_psf must be a non-negative number",
+      });
+    }
+  });
 }
 
 export class LeaseModule implements Module<LeaseModuleOutputs> {
@@ -74,6 +129,9 @@ export class LeaseModule implements Module<LeaseModuleOutputs> {
           message: "current_rent_psf_annual must be a non-negative number",
         });
       }
+      if (tenant.economics_mode === "steps") {
+        validateRentSteps(tenant.rent_steps, `tenants_in_place[${idx}]`, errors);
+      }
     });
 
     if (leaseInputs.market_rollover) {
@@ -89,6 +147,9 @@ export class LeaseModule implements Module<LeaseModuleOutputs> {
             path: `market_rollover[${idx}].market_rent_psf_annual`,
             message: "market_rent_psf_annual must be a non-negative number",
           });
+        }
+        if (tenant.economics_mode === "steps") {
+          validateRentSteps(tenant.rent_steps, `market_rollover[${idx}]`, errors);
         }
       });
     }
@@ -162,6 +223,27 @@ export class LeaseModule implements Module<LeaseModuleOutputs> {
     return { success: true, outputs };
   }
 
+  private applyRentSteps(
+    steps: RentStepInput[],
+    monthlyRentValues: number[],
+    sf: number,
+    timeline: { startDate: DateTime; totalMonths: number; monthIndex: (d: string) => number },
+    leaseStartMonth: number,
+    leaseEndMonth: number
+  ): void {
+    for (const step of steps) {
+      const stepStart = timeline.monthIndex(step.start_date);
+      const stepEnd = timeline.monthIndex(step.end_date);
+      const startMonth = Math.max(leaseStartMonth, stepStart);
+      const endMonth = Math.min(leaseEndMonth, stepEnd, timeline.totalMonths);
+      const stepMonthlyRent = (step.rent_psf * sf) / 12;
+
+      for (let m = startMonth; m < endMonth; m++) {
+        monthlyRentValues[m] = stepMonthlyRent;
+      }
+    }
+  }
+
   private computeInPlaceTenant(
     tenant: InPlaceTenantInput,
     timeline: { startDate: DateTime; totalMonths: number; monthIndex: (d: string) => number }
@@ -178,15 +260,27 @@ export class LeaseModule implements Module<LeaseModuleOutputs> {
     const annualRent = tenant.current_rent_psf_annual * tenant.sf;
     const monthlyRent = annualRent / 12;
     const bumpRate = tenant.annual_bump_pct ?? 0;
+    const economicsMode = tenant.economics_mode ?? "bump";
 
     // Calculate rent for each month
-    for (let m = 0; m < totalMonths; m++) {
-      if (m >= leaseStartMonth && m < leaseEndMonth) {
-        // Calculate years since lease start for bump calculation
-        const monthsSinceStart = m - leaseStartMonth;
-        const yearsSinceStart = Math.floor(monthsSinceStart / 12);
-        const rentWithBump = monthlyRent * Math.pow(1 + bumpRate, yearsSinceStart);
-        monthlyRentValues[m] = rentWithBump;
+    if (economicsMode === "steps" && tenant.rent_steps && tenant.rent_steps.length > 0) {
+      this.applyRentSteps(
+        tenant.rent_steps,
+        monthlyRentValues,
+        tenant.sf,
+        timeline,
+        leaseStartMonth,
+        leaseEndMonth,
+      );
+    } else {
+      for (let m = 0; m < totalMonths; m++) {
+        if (m >= leaseStartMonth && m < leaseEndMonth) {
+          // Calculate years since lease start for bump calculation
+          const monthsSinceStart = m - leaseStartMonth;
+          const yearsSinceStart = Math.floor(monthsSinceStart / 12);
+          const rentWithBump = monthlyRent * Math.pow(1 + bumpRate, yearsSinceStart);
+          monthlyRentValues[m] = rentWithBump;
+        }
       }
     }
 
@@ -241,14 +335,26 @@ export class LeaseModule implements Module<LeaseModuleOutputs> {
     const annualRent = tenant.market_rent_psf_annual * sf;
     const monthlyRent = annualRent / 12;
     const bumpRate = tenant.annual_bump_pct ?? 0;
+    const economicsMode = tenant.economics_mode ?? "bump";
 
-    // Calculate rent for each month
-    for (let m = 0; m < totalMonths; m++) {
-      if (m >= leaseStartMonth && m < leaseEndMonth) {
-        const monthsSinceStart = m - leaseStartMonth;
-        const yearsSinceStart = Math.floor(monthsSinceStart / 12);
-        const rentWithBump = monthlyRent * Math.pow(1 + bumpRate, yearsSinceStart);
-        monthlyRentValues[m] = rentWithBump;
+    if (economicsMode === "steps" && tenant.rent_steps && tenant.rent_steps.length > 0) {
+      this.applyRentSteps(
+        tenant.rent_steps,
+        monthlyRentValues,
+        sf,
+        timeline,
+        leaseStartMonth,
+        leaseEndMonth,
+      );
+    } else {
+      // Calculate rent for each month
+      for (let m = 0; m < totalMonths; m++) {
+        if (m >= leaseStartMonth && m < leaseEndMonth) {
+          const monthsSinceStart = m - leaseStartMonth;
+          const yearsSinceStart = Math.floor(monthsSinceStart / 12);
+          const rentWithBump = monthlyRent * Math.pow(1 + bumpRate, yearsSinceStart);
+          monthlyRentValues[m] = rentWithBump;
+        }
       }
     }
 
