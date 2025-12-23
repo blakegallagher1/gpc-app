@@ -427,6 +427,11 @@ Use this section to log progress during work sessions.
 - Deal engine transform passes fixed_annual reserves and returns inputs
 - File: services/mcp-server/src/index.ts
 - Build: pnpm --filter @gpc/deal-engine build && test; pnpm --filter @gpc/mcp-server build
+2025-12-23 10:54 - IRR solver robustness fix
+- Expanded bracket range, added multiple guesses, Brent's method fallback
+- Chicago deal now returns valid IRRs (unlevered 10.66%, levered 14.75%)
+- File: services/deal-engine/src/core/math-utils.ts
+- Build: pnpm --filter @gpc/deal-engine build && test
 ```
 
 ---
