@@ -90,25 +90,47 @@ Before deploying to production, run both gate tests against staging:
 export MCP_URL="https://mcp-server-xxx.onrender.com"
 export OPENAI_API_KEY="sk-..."
 
-# Run regression tests
+# Run regression tests (fast gate - ~60s)
 ./scripts/regression-test.sh
 
-# Run NL extraction gate tests
+# Run NL extraction gate tests (slow gate - may take 3-5 min due to OpenAI latency)
 ./scripts/nl-gate-test.sh
 ```
 
 ### Gate Test Requirements
 
-| Test | Description | Pass Criteria |
-|------|-------------|---------------|
-| Regression | Core model execution | All cases pass, IRRs in range |
-| NL Gate | Extraction + validation | Complete prompts validate, incomplete return missing_fields |
+| Test | Type | Description | Pass Criteria |
+|------|------|-------------|---------------|
+| Regression | **Fast** | Core model execution | All cases pass, IRRs in range |
+| NL Gate | **Slow** | Extraction + validation via OpenAI | Complete prompts validate, incomplete return missing_fields |
+
+### NL Gate Configuration (Slow Gate)
+
+The NL gate test uses OpenAI APIs and can experience latency spikes. Configure for staging with:
+
+```bash
+# Recommended staging settings
+export NL_GATE_TIMEOUT_SECONDS=180   # Per-request timeout (default: 180)
+export NL_GATE_MAX_RETRIES=3         # Max retries per test (default: 3)
+export NL_GATE_BACKOFF_SECONDS=5     # Initial backoff, doubles each retry (default: 5)
+```
+
+**Behavior:**
+- On timeout (HTTP 000), 429, or 5xx errors: retries with exponential backoff (5s → 10s → 20s)
+- If `OPENAI_API_KEY` is not set: exits with `NL_GATE: SKIP` (exit 0) for CI safety
+- Shows retry count and per-request duration in output
+
+**Final output format:**
+- `NL_GATE: PASS` - All tests passed
+- `NL_GATE: FAIL` - One or more tests failed (includes last error response)
+- `NL_GATE: SKIP` - Skipped (no API key)
 
 ### NL Gate Test Cases
 
-1. **Complete single-tenant** - Returns `status=ok`, inputs validate
-2. **Complete multi-tenant** - Returns `status=ok`, 3 tenants extracted, inputs validate
-3. **Incomplete prompt** - Returns `status=needs_info`, critical fields listed as missing
+1. **Complete single-tenant** - Returns `status=ok` or `needs_info`, inputs validate
+2. **Complete multi-tenant** - Returns `status=ok` or `needs_info`, 3 tenants extracted
+3. **MT with rollover** - Returns `status=ok` or `needs_info`, rollovers extracted
+4. **Incomplete prompt** - Returns `status=needs_info`, missing fields reported
 
 ### Staging Deployment
 
