@@ -1460,56 +1460,93 @@ static List<string> ValidateLayoutInvariants(ExcelPackage package)
         "Investment Summary"
     };
 
-    // Check required sheets exist
-    foreach (var sheetName in requiredSheets)
+    try
     {
-        var worksheet = package.Workbook.Worksheets[sheetName];
-        if (worksheet == null)
+        // Check required sheets exist
+        foreach (var sheetName in requiredSheets)
         {
-            warnings.Add($"Missing required sheet: {sheetName}");
-            continue;
-        }
-
-        // Check print area is defined
-        if (string.IsNullOrEmpty(worksheet.PrinterSettings.PrintArea?.Address))
-        {
-            warnings.Add($"Missing print area on sheet: {sheetName}");
-        }
-
-        // Check freeze panes on data sheets (should have frozen header row)
-        if (sheetName is "Monthly CF" or "Rent Roll" or "Annual Cashflow")
-        {
-            var view = worksheet.View;
-            // Check if frozen rows/columns are set (Panes collection contains frozen pane info)
-            if (view.Panes == null || view.Panes.Length == 0)
+            var worksheet = package.Workbook.Worksheets[sheetName];
+            if (worksheet == null)
             {
-                warnings.Add($"Missing freeze panes on sheet: {sheetName}");
+                warnings.Add($"Missing required sheet: {sheetName}");
+                continue;
+            }
+
+            // Check print area is defined
+            try
+            {
+                if (string.IsNullOrEmpty(worksheet.PrinterSettings.PrintArea?.Address))
+                {
+                    warnings.Add($"Missing print area on sheet: {sheetName}");
+                }
+            }
+            catch
+            {
+                // Ignore print area access errors
+            }
+
+            // Check freeze panes on data sheets (should have frozen header row)
+            if (sheetName is "Monthly CF" or "Rent Roll" or "Annual Cashflow")
+            {
+                var view = worksheet.View;
+                // Check if frozen rows/columns are set (Panes collection contains frozen pane info)
+                if (view.Panes == null || view.Panes.Length == 0)
+                {
+                    warnings.Add($"Missing freeze panes on sheet: {sheetName}");
+                }
+            }
+
+            // Validate page setup for key sheets - skip if it throws
+            try
+            {
+                ValidatePageSetup(worksheet, sheetName, warnings);
+            }
+            catch
+            {
+                // Skip page setup validation if EPPlus throws parsing errors
             }
         }
 
-        // Validate page setup for key sheets
-        ValidatePageSetup(worksheet, sheetName, warnings);
+        // Check Investment Summary has reasonable margins for PDF export
+        var summarySheet = package.Workbook.Worksheets["Investment Summary"];
+        if (summarySheet != null)
+        {
+            var printer = summarySheet.PrinterSettings;
+
+            // Check paper size (should be Letter/A4)
+            // EPPlus can throw when parsing enum values
+            try
+            {
+                if (printer.PaperSize != OfficeOpenXml.ePaperSize.Letter &&
+                    printer.PaperSize != OfficeOpenXml.ePaperSize.A4)
+                {
+                    warnings.Add($"Investment Summary: Unexpected paper size ({printer.PaperSize})");
+                }
+            }
+            catch
+            {
+                // Ignore paper size parsing errors
+            }
+
+            // Check orientation (summary is usually portrait)
+            try
+            {
+                if (printer.Orientation != OfficeOpenXml.eOrientation.Portrait &&
+                    printer.Orientation != OfficeOpenXml.eOrientation.Landscape)
+                {
+                    warnings.Add("Investment Summary: Page orientation not set");
+                }
+            }
+            catch
+            {
+                // Ignore orientation parsing errors
+            }
+        }
     }
-
-    // Check Investment Summary has reasonable margins for PDF export
-    var summarySheet = package.Workbook.Worksheets["Investment Summary"];
-    if (summarySheet != null)
+    catch (Exception ex)
     {
-        var printer = summarySheet.PrinterSettings;
-
-        // Check paper size (should be Letter/A4)
-        if (printer.PaperSize != OfficeOpenXml.ePaperSize.Letter &&
-            printer.PaperSize != OfficeOpenXml.ePaperSize.A4)
-        {
-            warnings.Add($"Investment Summary: Unexpected paper size ({printer.PaperSize})");
-        }
-
-        // Check orientation (summary is usually portrait)
-        if (printer.Orientation != OfficeOpenXml.eOrientation.Portrait &&
-            printer.Orientation != OfficeOpenXml.eOrientation.Landscape)
-        {
-            warnings.Add("Investment Summary: Page orientation not set");
-        }
+        // Log but don't fail the job for layout validation issues
+        LogStructured("WARN", "Layout validation failed", new { error = ex.Message });
     }
 
     return warnings;
