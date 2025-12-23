@@ -203,14 +203,22 @@ export interface ScenarioExitMonthRangeInput {
   step: number;
 }
 
+export interface ScenarioInterestRateRangeInput {
+  low: number;
+  high: number;
+  step: number;
+}
+
 export type ScenarioInput =
   | {
       enabled: false;
       exit_cap_range?: ScenarioExitCapRangeInput;
       exit_month_range?: ScenarioExitMonthRangeInput;
+      interest_rate_range?: ScenarioInterestRateRangeInput;
     }
   | {
       enabled: true;
       exit_cap_range: ScenarioExitCapRangeInput;
       exit_month_range: ScenarioExitMonthRangeInput;
+      interest_rate_range: ScenarioInterestRateRangeInput;
     };

@@ -642,6 +642,17 @@
                 "high": { "type": "integer", "minimum": 1, "maximum": 600, "description": "High exit month." },
                 "step": { "type": "integer", "minimum": 1, "maximum": 60, "description": "Step size for exit month." }
               }
+            },
+            "interest_rate_range": {
+              "type": "object",
+              "description": "Interest rate range definition.",
+              "additionalProperties": false,
+              "required": ["low", "high", "step"],
+              "properties": {
+                "low": { "type": "number", "minimum": 0, "maximum": 0.5, "description": "Low interest rate (decimal)." },
+                "high": { "type": "number", "minimum": 0, "maximum": 0.5, "description": "High interest rate (decimal)." },
+                "step": { "type": "number", "minimum": 0.0001, "maximum": 0.05, "description": "Step size for interest rate (decimal)." }
+              }
             }
           },
           "allOf": [
@@ -650,9 +661,14 @@
                 "type": "object",
                 "additionalProperties": false,
                 "required": ["enabled"],
-                "properties": { "enabled": { "const": true }, "exit_cap_range": {}, "exit_month_range": {} }
+                "properties": {
+                  "enabled": { "const": true },
+                  "exit_cap_range": {},
+                  "exit_month_range": {},
+                  "interest_rate_range": {}
+                }
               },
-              "then": { "required": ["exit_cap_range", "exit_month_range"] }
+              "then": { "required": ["exit_cap_range", "exit_month_range", "interest_rate_range"] }
             }
           ]
         }

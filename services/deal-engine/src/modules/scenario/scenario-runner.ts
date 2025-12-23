@@ -1,7 +1,12 @@
-import { irr } from "../../core/math-utils.js";
+import { irr, pmt, annualToMonthly } from "../../core/math-utils.js";
 import { Series } from "../../core/series.js";
 import { DealContext } from "../../types/context.js";
-import { ScenarioInput, ScenarioExitCapRangeInput, ScenarioExitMonthRangeInput } from "../../types/inputs.js";
+import {
+  ScenarioInput,
+  ScenarioExitCapRangeInput,
+  ScenarioExitMonthRangeInput,
+  ScenarioInterestRateRangeInput,
+} from "../../types/inputs.js";
 import { Module, ModuleResult, ValidationResult } from "../../types/module.js";
 import { DebtModuleOutputs } from "../debt/debt-module.js";
 import { ExitModuleOutputs } from "../exit/exit-module.js";
@@ -10,6 +15,7 @@ import { OperatingModuleOutputs } from "../operating/operating-module.js";
 export interface ScenarioCell {
   exitCapRate: number;
   exitMonth: number;
+  interestRate: number;
   unleveredIrr: number;
   leveredIrr: number;
   equityMultiple: number;
@@ -17,14 +23,18 @@ export interface ScenarioCell {
 
 export interface ScenarioRunnerOutputs {
   baseCase: ScenarioCell;
-  grid: ScenarioCell[][];
+  grid: ScenarioCell[][][];
   exitCapRates: number[];
   exitMonths: number[];
+  interestRates: number[];
 }
 
 type ScenarioRunnerResult = ModuleResult<ScenarioRunnerOutputs>;
 
-type ScenarioRangeInput = ScenarioExitCapRangeInput | ScenarioExitMonthRangeInput;
+type ScenarioRangeInput =
+  | ScenarioExitCapRangeInput
+  | ScenarioExitMonthRangeInput
+  | ScenarioInterestRateRangeInput;
 
 function assertScenarioInput(inputs: unknown): asserts inputs is ScenarioInput | undefined {
   if (inputs === undefined) return;
@@ -97,11 +107,18 @@ export class ScenarioRunner implements Module<ScenarioRunnerOutputs> {
           message: "exit_month_range must include low, high, and step",
         });
       }
+      if (!isScenarioRange(scenarioInputs.interest_rate_range)) {
+        errors.push({
+          path: "scenario.interest_rate_range",
+          message: "interest_rate_range must include low, high, and step",
+        });
+      }
     }
 
     const ranges: { path: string; value: ScenarioRangeInput | undefined }[] = [
       { path: "scenario.exit_cap_range", value: scenarioInputs?.exit_cap_range },
       { path: "scenario.exit_month_range", value: scenarioInputs?.exit_month_range },
+      { path: "scenario.interest_rate_range", value: scenarioInputs?.interest_rate_range },
     ];
 
     for (const range of ranges) {
@@ -148,10 +165,12 @@ export class ScenarioRunner implements Module<ScenarioRunnerOutputs> {
     const timeline = context.timeline;
     const exitInputs = context.inputs.modules.exit;
     const acquisitionInputs = context.inputs.modules.acquisition;
+    const debtInputs = context.inputs.modules.debt;
 
     const baseCase: ScenarioCell = {
       exitCapRate: context.metrics.exitCapRate ?? exitInputs.exit_cap_rate,
       exitMonth: timeline.exitMonth,
+      interestRate: debtInputs?.acquisition_loan.rate ?? 0,
       unleveredIrr: context.metrics.unleveredIrr ?? 0,
       leveredIrr: context.metrics.leveredIrr ?? 0,
       equityMultiple: context.metrics.equityMultiple ?? 0,
@@ -163,6 +182,7 @@ export class ScenarioRunner implements Module<ScenarioRunnerOutputs> {
         grid: [],
         exitCapRates: [],
         exitMonths: [],
+        interestRates: [],
       };
       context.outputs.scenario = outputs;
       return { success: true, outputs };
@@ -170,6 +190,7 @@ export class ScenarioRunner implements Module<ScenarioRunnerOutputs> {
 
     const exitCapRates = buildRange(scenarioInputs.exit_cap_range);
     const exitMonths = buildRange(scenarioInputs.exit_month_range);
+    const interestRates = buildRange(scenarioInputs.interest_rate_range);
 
     const purchasePrice = acquisitionInputs.purchase_price;
     const closingCosts = purchasePrice * acquisitionInputs.closing_cost_pct;
@@ -178,12 +199,67 @@ export class ScenarioRunner implements Module<ScenarioRunnerOutputs> {
     const equityInvestment = totalAcquisitionCost - loanAmount;
 
     const noi = operatingOutputs.netOperatingIncome;
-    const debtService = debtOutputs?.totalDebtService ?? Series.zeros(timeline.totalMonths);
+    const closeMonth = acquisitionInputs.close_month ?? 0;
+    const fundingMonth = debtInputs?.funding_month ?? closeMonth;
+    const debtServiceBase = debtOutputs?.totalDebtService ?? Series.zeros(timeline.totalMonths);
+    const loanBalanceBase = debtOutputs?.loanBalance ?? Series.zeros(timeline.totalMonths);
 
     let unleveredIrrWarningSent = false;
     let leveredIrrWarningSent = false;
 
-    const computeCell = (exitCapRate: number, exitMonthValue: number): ScenarioCell => {
+    const computeDebtSchedule = (rate: number): { debtService: Series; loanBalance: Series } => {
+      if (!debtInputs || loanAmount <= 0) {
+        const zeros = Series.zeros(timeline.totalMonths);
+        return { debtService: zeros, loanBalance: zeros };
+      }
+
+      const loan = debtInputs.acquisition_loan;
+      const monthlyRate = annualToMonthly(rate);
+      const amortMonths = loan.amort_years * 12;
+      const ioMonths = loan.io_months;
+      const termMonths = loan.term_months;
+      const fullPayment = -pmt(monthlyRate, amortMonths, loanAmount);
+
+      const debtServiceValues = new Array(timeline.totalMonths).fill(0);
+      const balanceValues = new Array(timeline.totalMonths).fill(0);
+      let balance = loanAmount;
+
+      for (let m = 0; m < timeline.totalMonths; m += 1) {
+        if (m < fundingMonth) {
+          balanceValues[m] = 0;
+          continue;
+        }
+        const loanMonth = m - fundingMonth;
+        if (loanMonth >= termMonths || balance <= 0) {
+          balanceValues[m] = 0;
+          continue;
+        }
+
+        const interest = balance * monthlyRate;
+        let debtService = 0;
+        let principal = 0;
+        if (loanMonth < ioMonths) {
+          debtService = interest;
+        } else {
+          debtService = fullPayment;
+          principal = fullPayment - interest;
+          balance -= principal;
+        }
+
+        debtServiceValues[m] = debtService;
+        balanceValues[m] = Math.max(0, balance);
+      }
+
+      return { debtService: new Series(debtServiceValues), loanBalance: new Series(balanceValues) };
+    };
+
+    const computeCell = (
+      exitCapRate: number,
+      exitMonthValue: number,
+      interestRate: number,
+      debtService: Series,
+      loanBalance: Series,
+    ): ScenarioCell => {
       const exitMonthIndex = Math.min(
         timeline.totalMonths,
         Math.max(1, Math.round(exitMonthValue)),
@@ -194,9 +270,7 @@ export class ScenarioRunner implements Module<ScenarioRunnerOutputs> {
       const saleCosts = grossSalePrice * exitInputs.sale_cost_pct;
       const netSaleProceeds = grossSalePrice - saleCosts;
 
-      const loanPayoff = debtOutputs
-        ? debtOutputs.loanBalance.get(Math.max(0, exitMonthIndex - 1))
-        : 0;
+      const loanPayoff = loanBalance.get(Math.max(0, exitMonthIndex - 1));
       const netEquityProceeds = netSaleProceeds - loanPayoff;
 
       const unleveredCashflows: number[] = [-totalAcquisitionCost];
@@ -242,14 +316,23 @@ export class ScenarioRunner implements Module<ScenarioRunnerOutputs> {
       return {
         exitCapRate,
         exitMonth: exitMonthValue,
+        interestRate,
         unleveredIrr,
         leveredIrr,
         equityMultiple,
       };
     };
 
-    const grid: ScenarioCell[][] = exitCapRates.map((exitCapRate) => {
-      return exitMonths.map((exitMonth) => computeCell(exitCapRate, exitMonth));
+    const grid: ScenarioCell[][][] = exitCapRates.map((exitCapRate) => {
+      return exitMonths.map((exitMonth) => {
+        return interestRates.map((interestRate) => {
+          if (!debtInputs) {
+            return computeCell(exitCapRate, exitMonth, interestRate, debtServiceBase, loanBalanceBase);
+          }
+          const { debtService, loanBalance } = computeDebtSchedule(interestRate);
+          return computeCell(exitCapRate, exitMonth, interestRate, debtService, loanBalance);
+        });
+      });
     });
 
     const outputs: ScenarioRunnerOutputs = {
@@ -257,6 +340,7 @@ export class ScenarioRunner implements Module<ScenarioRunnerOutputs> {
       grid,
       exitCapRates,
       exitMonths,
+      interestRates,
     };
 
     context.outputs.scenario = outputs;

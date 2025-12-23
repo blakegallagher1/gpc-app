@@ -188,11 +188,11 @@ These enable "structure the deal however I want."
 ---
 
 ### B7. Full Sensitivity Grid Runner
-- [ ] Exit month grid (48-72 months)
-- [ ] Exit cap grid (7.0%-9.0%)
-- [ ] Interest rate grid (5.5%-7.0%)
-- [ ] Matrix output format for all combinations
-- [ ] Integration with MCP response
+- [x] Exit month grid (48-72 months)
+- [x] Exit cap grid (7.0%-9.0%)
+- [x] Interest rate grid (5.5%-7.0%)
+- [x] Matrix output format for all combinations
+- [!] Integration with MCP response
 
 **Current Status:** ScenarioRunner exists with exit cap/month grid. Rate grid not implemented.
 
@@ -391,6 +391,12 @@ Use this section to log progress during work sessions.
 - DebtModule now sizes by DSCR/explicit amount, supports funding delays, and applies cash sweep
 - Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/types/inputs.ts, services/deal-engine/src/modules/debt/debt-module.ts
 - Build: pnpm --filter @gpc/deal-engine build && test
+2025-12-23 02:16 - [B7] Added interest-rate sensitivity grid
+- Added interest_rate_range to schema/inputs and expanded ScenarioRunner grid to 3D
+- ScenarioRunner now recalculates debt service/loan balance per rate
+- Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/types/inputs.ts, services/deal-engine/src/modules/scenario/scenario-runner.ts, services/deal-engine/src/index.ts
+- Build: pnpm --filter @gpc/deal-engine build && test
+- Blocker: MCP response integration not wired yet
 ```
 
 ---

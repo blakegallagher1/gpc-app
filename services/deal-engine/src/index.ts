@@ -38,6 +38,7 @@ export type {
   WaterfallInput,
   ScenarioExitCapRangeInput,
   ScenarioExitMonthRangeInput,
+  ScenarioInterestRateRangeInput,
   ScenarioInput,
 } from "./types/inputs.js";
 export type { DealContext, DealMetrics } from "./types/context.js";
