@@ -1,0 +1,391 @@
+{
+  "version": "0.1.0",
+
+  "acquisition": {
+    "fields": [
+      {
+        "path": "acquisition.purchase_price",
+        "label": "Purchase Price",
+        "description": "Total acquisition price for the property.",
+        "type": "currency",
+        "default": null,
+        "required": true,
+        "validation_message": "Purchase price must be greater than 0."
+      },
+      {
+        "path": "acquisition.closing_cost_pct",
+        "label": "Closing Cost %",
+        "description": "Acquisition closing costs as a percent of purchase price (decimal).",
+        "type": "percentage",
+        "default": 0.015,
+        "required": true,
+        "validation_message": "Closing costs must be between 0% and 20%."
+      }
+    ]
+  },
+
+  "lease": {
+    "fields": [
+      {
+        "path": "lease.tenants_in_place",
+        "label": "Tenants In Place",
+        "description": "In-place tenants and current lease terms.",
+        "type": "array",
+        "default": null,
+        "required": true,
+        "validation_message": "At least one in-place tenant is required."
+      },
+      {
+        "path": "lease.tenants_in_place[].tenant_name",
+        "label": "Tenant Name",
+        "description": "Tenant name.",
+        "type": "string",
+        "default": "",
+        "required": true,
+        "validation_message": "Tenant name is required."
+      },
+      {
+        "path": "lease.tenants_in_place[].sf",
+        "label": "Tenant SF",
+        "description": "Tenant leased square feet.",
+        "type": "integer",
+        "default": null,
+        "required": true,
+        "validation_message": "Tenant square feet must be greater than or equal to 0."
+      },
+      {
+        "path": "lease.tenants_in_place[].lease_start",
+        "label": "Lease Start",
+        "description": "Lease start date.",
+        "type": "date",
+        "default": null,
+        "required": true,
+        "validation_message": "Lease start date is required."
+      },
+      {
+        "path": "lease.tenants_in_place[].lease_end",
+        "label": "Lease End",
+        "description": "Lease end date.",
+        "type": "date",
+        "default": null,
+        "required": true,
+        "validation_message": "Lease end date is required."
+      },
+      {
+        "path": "lease.tenants_in_place[].current_rent_psf_annual",
+        "label": "Current Rent ($/SF/Yr)",
+        "description": "Current base rent in dollars per square foot per year.",
+        "type": "currency",
+        "default": null,
+        "required": true,
+        "validation_message": "Current rent must be greater than or equal to 0."
+      },
+      {
+        "path": "lease.tenants_in_place[].annual_bump_pct",
+        "label": "Annual Bump %",
+        "description": "Annual rent escalation (decimal).",
+        "type": "percentage",
+        "default": 0.03,
+        "required": false,
+        "validation_message": "Annual bump must be between -10% and 20%."
+      },
+      {
+        "path": "lease.tenants_in_place[].lease_type",
+        "label": "Lease Type",
+        "description": "Expense recovery structure (NNN / Modified Gross / Gross).",
+        "type": "string",
+        "default": "NNN",
+        "required": false,
+        "validation_message": "Lease type must be NNN, MOD_GROSS, or GROSS."
+      },
+      {
+        "path": "lease.market_rollover",
+        "label": "Market Rollover",
+        "description": "Optional future/rollover lease terms (downtime + re-leasing economics).",
+        "type": "array",
+        "default": [],
+        "required": false,
+        "validation_message": "Market rollover must be a list of rollover assumptions."
+      },
+      {
+        "path": "lease.market_rollover[].market_rent_psf_annual",
+        "label": "Market Rent ($/SF/Yr)",
+        "description": "Market base rent in dollars per square foot per year at rollover.",
+        "type": "currency",
+        "default": null,
+        "required": true,
+        "validation_message": "Market rent must be greater than or equal to 0."
+      },
+      {
+        "path": "lease.market_rollover[].downtime_months",
+        "label": "Downtime (Months)",
+        "description": "Vacant downtime between leases (months).",
+        "type": "integer",
+        "default": 0,
+        "required": false,
+        "validation_message": "Downtime must be between 0 and 60 months."
+      }
+    ]
+  },
+
+  "operating": {
+    "fields": [
+      {
+        "path": "operating.vacancy_pct",
+        "label": "Vacancy %",
+        "description": "Vacancy allowance (decimal).",
+        "type": "percentage",
+        "default": 0.05,
+        "required": true,
+        "validation_message": "Vacancy must be between 0% and 50%."
+      },
+      {
+        "path": "operating.credit_loss_pct",
+        "label": "Credit Loss %",
+        "description": "Credit loss allowance (decimal).",
+        "type": "percentage",
+        "default": 0,
+        "required": true,
+        "validation_message": "Credit loss must be between 0% and 20%."
+      },
+      {
+        "path": "operating.inflation.rent",
+        "label": "Rent Growth %",
+        "description": "Annual rent growth rate (decimal).",
+        "type": "percentage",
+        "default": 0.03,
+        "required": true,
+        "validation_message": "Rent growth must be between -10% and 20%."
+      },
+      {
+        "path": "operating.inflation.expenses",
+        "label": "Expense Growth %",
+        "description": "Annual operating expense growth rate (decimal).",
+        "type": "percentage",
+        "default": 0.03,
+        "required": true,
+        "validation_message": "Expense growth must be between -10% and 20%."
+      },
+      {
+        "path": "operating.inflation.taxes",
+        "label": "Tax Growth %",
+        "description": "Annual property tax growth rate (decimal).",
+        "type": "percentage",
+        "default": 0.03,
+        "required": true,
+        "validation_message": "Tax growth must be between -10% and 20%."
+      },
+      {
+        "path": "operating.expenses.recoveries.mode",
+        "label": "Recoveries Mode",
+        "description": "Expense recovery mode (NNN / Modified Gross / Gross).",
+        "type": "string",
+        "default": "NNN",
+        "required": true,
+        "validation_message": "Recoveries mode must be NNN, MOD_GROSS, or GROSS."
+      }
+    ]
+  },
+
+  "debt": {
+    "fields": [
+      {
+        "path": "debt.acquisition_loan.ltv_max",
+        "label": "Max LTV",
+        "description": "Maximum loan-to-value (decimal).",
+        "type": "percentage",
+        "default": 0.65,
+        "required": true,
+        "validation_message": "Max LTV must be between 0% and 90%."
+      },
+      {
+        "path": "debt.acquisition_loan.rate",
+        "label": "Interest Rate",
+        "description": "Annual interest rate (decimal).",
+        "type": "percentage",
+        "default": 0.065,
+        "required": true,
+        "validation_message": "Interest rate must be between 0% and 25%."
+      },
+      {
+        "path": "debt.acquisition_loan.amort_years",
+        "label": "Amortization (Years)",
+        "description": "Amortization term in years.",
+        "type": "integer",
+        "default": 25,
+        "required": true,
+        "validation_message": "Amortization must be between 1 and 40 years."
+      },
+      {
+        "path": "debt.acquisition_loan.io_months",
+        "label": "Interest-Only (Months)",
+        "description": "Interest-only period in months.",
+        "type": "integer",
+        "default": 0,
+        "required": true,
+        "validation_message": "Interest-only months must be between 0 and 120."
+      },
+      {
+        "path": "debt.acquisition_loan.term_months",
+        "label": "Loan Term (Months)",
+        "description": "Loan term in months.",
+        "type": "integer",
+        "default": 60,
+        "required": true,
+        "validation_message": "Loan term must be between 1 and 600 months."
+      }
+    ]
+  },
+
+  "exit": {
+    "fields": [
+      {
+        "path": "exit.exit_cap_rate",
+        "label": "Exit Cap Rate",
+        "description": "Exit cap rate (decimal).",
+        "type": "percentage",
+        "default": 0.065,
+        "required": true,
+        "validation_message": "Exit cap rate must be between 1% and 20%."
+      },
+      {
+        "path": "exit.exit_month",
+        "label": "Exit Month",
+        "description": "Disposition month (1 = end of month 1).",
+        "type": "integer",
+        "default": 120,
+        "required": true,
+        "validation_message": "Exit month must be between 1 and 600."
+      },
+      {
+        "path": "exit.sale_cost_pct",
+        "label": "Sale Cost %",
+        "description": "Sale transaction costs as a percent of gross sale price (decimal).",
+        "type": "percentage",
+        "default": 0.03,
+        "required": true,
+        "validation_message": "Sale costs must be between 0% and 10%."
+      },
+      {
+        "path": "exit.forward_noi_months",
+        "label": "Forward NOI Months",
+        "description": "Forward NOI months used for exit valuation (e.g., 12 for forward-12 NOI).",
+        "type": "integer",
+        "default": 12,
+        "required": false,
+        "validation_message": "Forward NOI months must be between 0 and 24."
+      }
+    ]
+  },
+
+  "waterfall": {
+    "fields": [
+      {
+        "path": "waterfall.enabled",
+        "label": "Enable Waterfall",
+        "description": "Whether to apply a promote waterfall.",
+        "type": "boolean",
+        "default": false,
+        "required": true,
+        "validation_message": "Enable Waterfall must be true or false."
+      },
+      {
+        "path": "waterfall.tiers",
+        "label": "Waterfall Tiers",
+        "description": "Waterfall tiers, in ascending order of hurdles.",
+        "type": "array",
+        "default": [
+          { "hurdle_irr": 0.08, "promote_split": 0.2 }
+        ],
+        "required": false,
+        "validation_message": "Waterfall tiers are required when the waterfall is enabled."
+      },
+      {
+        "path": "waterfall.tiers[].hurdle_irr",
+        "label": "Hurdle IRR",
+        "description": "Tier hurdle IRR (decimal).",
+        "type": "percentage",
+        "default": 0.08,
+        "required": true,
+        "validation_message": "Hurdle IRR must be between 0% and 100%."
+      },
+      {
+        "path": "waterfall.tiers[].promote_split",
+        "label": "Promote Split",
+        "description": "Promote split (decimal; e.g., 0.2 for 20% promote).",
+        "type": "percentage",
+        "default": 0.2,
+        "required": true,
+        "validation_message": "Promote split must be between 0% and 100%."
+      }
+    ]
+  },
+
+  "scenario": {
+    "fields": [
+      {
+        "path": "scenario.enabled",
+        "label": "Enable Scenarios",
+        "description": "Whether to run scenario ranges.",
+        "type": "boolean",
+        "default": false,
+        "required": true,
+        "validation_message": "Enable Scenarios must be true or false."
+      },
+      {
+        "path": "scenario.exit_cap_range.low",
+        "label": "Exit Cap (Low)",
+        "description": "Low exit cap rate (decimal).",
+        "type": "percentage",
+        "default": 0.055,
+        "required": false,
+        "validation_message": "Exit cap low must be between 1% and 25% when scenarios are enabled."
+      },
+      {
+        "path": "scenario.exit_cap_range.high",
+        "label": "Exit Cap (High)",
+        "description": "High exit cap rate (decimal).",
+        "type": "percentage",
+        "default": 0.075,
+        "required": false,
+        "validation_message": "Exit cap high must be between 1% and 25% when scenarios are enabled."
+      },
+      {
+        "path": "scenario.exit_cap_range.step",
+        "label": "Exit Cap (Step)",
+        "description": "Step size for exit cap rate (decimal).",
+        "type": "percentage",
+        "default": 0.0025,
+        "required": false,
+        "validation_message": "Exit cap step must be between 0.01% and 5% when scenarios are enabled."
+      },
+      {
+        "path": "scenario.exit_month_range.low",
+        "label": "Exit Month (Low)",
+        "description": "Low exit month.",
+        "type": "integer",
+        "default": 96,
+        "required": false,
+        "validation_message": "Exit month low must be between 1 and 600 when scenarios are enabled."
+      },
+      {
+        "path": "scenario.exit_month_range.high",
+        "label": "Exit Month (High)",
+        "description": "High exit month.",
+        "type": "integer",
+        "default": 144,
+        "required": false,
+        "validation_message": "Exit month high must be between 1 and 600 when scenarios are enabled."
+      },
+      {
+        "path": "scenario.exit_month_range.step",
+        "label": "Exit Month (Step)",
+        "description": "Step size for exit month.",
+        "type": "integer",
+        "default": 12,
+        "required": false,
+        "validation_message": "Exit month step must be between 1 and 60 when scenarios are enabled."
+      }
+    ]
+  }
+}
