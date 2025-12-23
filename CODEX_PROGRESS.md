@@ -265,9 +265,9 @@ These enable "structure the deal however I want."
 ---
 
 ### E3. Rate Limiting / Abuse Protection
-- [ ] Request rate limiting
-- [ ] Per-user quotas
-- [ ] Abuse detection
+- [x] Request rate limiting
+- [x] Per-user quotas
+- [x] Abuse detection
 
 ---
 
@@ -441,6 +441,11 @@ Use this section to log progress during work sessions.
 - Jobs survive restarts; outputs/errors/URLs persisted
 - Files: services/excel-engine/Program.cs, services/excel-engine/excel-engine.csproj
 - Build: dotnet build services/excel-engine/excel-engine.csproj (warnings pre-existing)
+2025-12-23 11:08 - [E3] Added MCP rate limiting and per-session quotas
+- Added IP-based and session-based rate limiters for MCP requests
+- Returned 429 with Retry-After and rate limit headers on limit exceed
+- File: services/mcp-server/src/index.ts
+- Build: pnpm --filter @gpc/mcp-server build
 ```
 
 ---

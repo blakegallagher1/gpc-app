@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage } from "node:http";
 import { readFile } from "node:fs/promises";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -22,6 +22,9 @@ const MCP_PUBLIC_URL = process.env.MCP_PUBLIC_URL ?? `http://localhost:${PORT}`;
 const B2_DOWNLOAD_URL = process.env.B2_DOWNLOAD_URL?.trim() ?? "";
 const DEAL_ENGINE_VALIDATE = process.env.DEAL_ENGINE_VALIDATE === "true";
 const MCP_PATH = "/mcp";
+const RATE_LIMIT_WINDOW_SEC = Number(process.env.RATE_LIMIT_WINDOW_SEC ?? 60);
+const RATE_LIMIT_MAX_REQUESTS = Number(process.env.RATE_LIMIT_MAX_REQUESTS ?? 60);
+const RATE_LIMIT_MAX_REQUESTS_PER_SESSION = Number(process.env.RATE_LIMIT_MAX_REQUESTS_PER_SESSION ?? 30);
 
 // Cache build inputs for optional Deal Engine validation (keyed by job_id)
 const indAcqInputsByJobId = new Map<string, Record<string, unknown>>();
@@ -42,6 +45,68 @@ const log = {
     console.error(`[ERROR] ${msg}`, safeMeta ? JSON.stringify(safeMeta) : "");
   },
 };
+
+type RateLimitResult = { allowed: boolean; remaining: number; resetMs: number };
+
+class RateLimiter {
+  private readonly windowMs: number;
+  private readonly maxRequests: number;
+  private readonly entries = new Map<string, { windowStart: number; count: number }>();
+  private lastCleanup = Date.now();
+  private readonly cleanupIntervalMs = 5 * 60 * 1000;
+
+  constructor(windowMs: number, maxRequests: number) {
+    this.windowMs = windowMs;
+    this.maxRequests = maxRequests;
+  }
+
+  allow(key: string, now = Date.now()): RateLimitResult {
+    const entry = this.entries.get(key);
+    if (!entry || now - entry.windowStart >= this.windowMs) {
+      this.entries.set(key, { windowStart: now, count: 1 });
+      this.cleanupIfNeeded(now);
+      return { allowed: true, remaining: Math.max(0, this.maxRequests - 1), resetMs: this.windowMs };
+    }
+
+    if (entry.count >= this.maxRequests) {
+      this.cleanupIfNeeded(now);
+      return { allowed: false, remaining: 0, resetMs: Math.max(0, this.windowMs - (now - entry.windowStart)) };
+    }
+
+    entry.count += 1;
+    this.cleanupIfNeeded(now);
+    return { allowed: true, remaining: Math.max(0, this.maxRequests - entry.count), resetMs: Math.max(0, this.windowMs - (now - entry.windowStart)) };
+  }
+
+  private cleanupIfNeeded(now: number): void {
+    if (now - this.lastCleanup < this.cleanupIntervalMs) return;
+    for (const [key, entry] of this.entries.entries()) {
+      if (now - entry.windowStart >= this.windowMs * 2) {
+        this.entries.delete(key);
+      }
+    }
+    this.lastCleanup = now;
+  }
+}
+
+const ipLimiter = new RateLimiter(RATE_LIMIT_WINDOW_SEC * 1000, RATE_LIMIT_MAX_REQUESTS);
+const sessionLimiter = new RateLimiter(RATE_LIMIT_WINDOW_SEC * 1000, RATE_LIMIT_MAX_REQUESTS_PER_SESSION);
+
+function getClientIp(req: IncomingMessage): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.length > 0) {
+    return forwarded.split(",")[0]?.trim() ?? "unknown";
+  }
+  const realIp = req.headers["x-real-ip"];
+  if (typeof realIp === "string" && realIp.length > 0) {
+    return realIp;
+  }
+  const cfIp = req.headers["cf-connecting-ip"];
+  if (typeof cfIp === "string" && cfIp.length > 0) {
+    return cfIp;
+  }
+  return req.socket.remoteAddress ?? "unknown";
+}
 
 // Redact sensitive values from logs
 function redactSensitive(obj: Record<string, unknown>): Record<string, unknown> {
@@ -1360,6 +1425,41 @@ const httpServer = createServer(async (req, res) => {
   if (url.pathname === MCP_PATH && req.method && MCP_METHODS.has(req.method)) {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+
+    const ipKey = getClientIp(req);
+    const ipLimit = ipLimiter.allow(ipKey);
+    if (!ipLimit.allowed) {
+      const retryAfter = Math.ceil(ipLimit.resetMs / 1000);
+      res.writeHead(429, {
+        "content-type": "application/json",
+        "Retry-After": retryAfter.toString(),
+        "X-RateLimit-Limit": RATE_LIMIT_MAX_REQUESTS.toString(),
+        "X-RateLimit-Remaining": ipLimit.remaining.toString(),
+        "X-RateLimit-Reset": retryAfter.toString(),
+      });
+      res.end(JSON.stringify({ error: "rate_limited", message: "Too many requests. Please retry later." }));
+      return;
+    }
+
+    const sessionIdHeader = req.headers["mcp-session-id"];
+    if (typeof sessionIdHeader === "string" && sessionIdHeader.length > 0) {
+      const sessionLimit = sessionLimiter.allow(sessionIdHeader);
+      if (!sessionLimit.allowed) {
+        const retryAfter = Math.ceil(sessionLimit.resetMs / 1000);
+        res.writeHead(429, {
+          "content-type": "application/json",
+          "Retry-After": retryAfter.toString(),
+          "X-RateLimit-Limit": RATE_LIMIT_MAX_REQUESTS.toString(),
+          "X-RateLimit-Remaining": ipLimit.remaining.toString(),
+          "X-RateLimit-Reset": Math.ceil(ipLimit.resetMs / 1000).toString(),
+          "X-RateLimit-Session-Limit": RATE_LIMIT_MAX_REQUESTS_PER_SESSION.toString(),
+          "X-RateLimit-Session-Remaining": sessionLimit.remaining.toString(),
+          "X-RateLimit-Session-Reset": retryAfter.toString(),
+        });
+        res.end(JSON.stringify({ error: "rate_limited", message: "Session request limit exceeded. Please retry later." }));
+        return;
+      }
+    }
 
     const server = createIndAcqServer();
     const transport = new StreamableHTTPServerTransport({
