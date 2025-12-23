@@ -283,11 +283,15 @@ interface DealEngineInputsV0 {
     operating?: {
       vacancy_pct: number;
       credit_loss_pct: number;
-      inflation: { rent: number; expenses: number; taxes: number };
-      expenses: { recoveries: { mode: string } };
+      inflation: { rent: number; expenses: number; taxes: number; recoveries?: number };
+      expenses: {
+        recoveries: { mode: string };
+        fixed_annual?: { reserves?: number; reserves_growth_pct?: number };
+      };
     };
     debt?: { acquisition_loan: { ltv_max: number; rate: number; amort_years: number; io_months: number; term_months: number } };
     exit: { exit_cap_rate: number; exit_month: number; sale_cost_pct: number; forward_noi_months?: number };
+    returns?: { discount_rate_unlevered?: number; discount_rate_levered?: number };
   };
 }
 
@@ -298,6 +302,7 @@ function transformToDealEngineV0(indAcq: Record<string, unknown>): DealEngineInp
   const op = indAcq.operating as Record<string, unknown>;
   const debt = indAcq.debt as Record<string, unknown>;
   const exit = indAcq.exit as Record<string, unknown>;
+  const returns = indAcq.returns as Record<string, unknown>;
   const debtLoan = (debt?.acquisition_loan as Record<string, unknown>) ?? {};
   const debtRate = (debtLoan.rate as Record<string, unknown>) ?? {};
 
@@ -328,9 +333,14 @@ function transformToDealEngineV0(indAcq: Record<string, unknown>): DealEngineInp
         ? {
             vacancy_pct: (op.vacancy_pct as number) ?? 0.05,
             credit_loss_pct: (op.credit_loss_pct as number) ?? 0.02,
-            inflation: (op.inflation as { rent: number; expenses: number; taxes: number }) ?? { rent: 0.03, expenses: 0.025, taxes: 0.02 },
+            inflation:
+              (op.inflation as { rent: number; expenses: number; taxes: number; recoveries?: number }) ??
+              { rent: 0.03, expenses: 0.025, taxes: 0.02, recoveries: 0.02 },
             expenses: {
               recoveries: { mode: (((op.expenses as Record<string, unknown>)?.recoveries as Record<string, unknown>)?.mode as string) ?? "NNN" },
+              fixed_annual: (op.expenses as Record<string, unknown>)?.fixed_annual as
+                | { reserves?: number; reserves_growth_pct?: number }
+                | undefined,
             },
           }
         : undefined,
@@ -351,6 +361,12 @@ function transformToDealEngineV0(indAcq: Record<string, unknown>): DealEngineInp
         sale_cost_pct: (exit?.sale_cost_pct as number) ?? 0.02,
         forward_noi_months: exit?.forward_noi_months as number | undefined,
       },
+      returns: returns
+        ? {
+            discount_rate_unlevered: (returns?.discount_rate_unlevered as number) ?? undefined,
+            discount_rate_levered: (returns?.discount_rate_levered as number) ?? undefined,
+          }
+        : undefined,
     },
   };
 }
@@ -926,6 +942,7 @@ CRITICAL RULES:
 3. Convert percentages to decimals (5% -> 0.05)
 4. Convert years to months where appropriate (5 year hold -> 60 months, exit_month = hold_period_months)
 5. For dates not specified, use reasonable estimates based on context (e.g., analysis_start_date = next month's 1st)
+6. Capture reserves escalation phrases (e.g., "escalating 2.5% annually") as reserves_growth_pct
 
 Return a JSON object with this structure:
 {
@@ -953,7 +970,10 @@ Return a JSON object with this structure:
       "inflation": { "rent": 0.03, "expenses": 0.025, "taxes": 0.02 },
       "expenses": {
         "management_fee_pct_egi": number (default 0.04),
-        "fixed_annual": {},
+        "fixed_annual": {
+          "reserves": number,
+          "reserves_growth_pct": number
+        },
         "recoveries": { "mode": "NNN" | "MOD_GROSS" | "GROSS" }
       }
     },
@@ -1001,6 +1021,10 @@ Return a JSON object with this structure:
       "exit_cap_rate": number,
       "sale_cost_pct": number (default 0.02),
       "forward_noi_months": number (default 12)
+    },
+    "returns": {
+      "discount_rate_unlevered": number,
+      "discount_rate_levered": number
     }
   },
   "missing_fields": [
@@ -1017,6 +1041,10 @@ PASS B - Normalize consistency:
 - debt.acquisition_loan.term_months should match hold_period_months if not specified
 - Tenant SF should sum to net_sf (or close to it)
 - Dates should be internally consistent
+
+DISCOUNT RATE EXTRACTION:
+- If user provides a discount rate without leverage qualifier, set returns.discount_rate_unlevered
+- If user provides levered/unlevered discount rates explicitly, map both fields
 
 ROLLOVER EXTRACTION:
 - If user mentions "renewal", "rollover", "re-lease", or "downtime" for a tenant, extract market_rollover

@@ -422,6 +422,11 @@ Use this section to log progress during work sessions.
 - ExitModule now computes NPV metrics when discount rates provided
 - Files: contracts/deal_engine_v0.schema.json, services/deal-engine/src/types/inputs.ts, services/deal-engine/src/modules/exit/exit-module.ts, services/deal-engine/src/types/context.ts, services/deal-engine/src/index.ts
 - Build: pnpm --filter @gpc/deal-engine build && test; pnpm --filter @gpc/mcp-server build
+2025-12-23 02:46 - [Task3] Updated NL extraction for reserves growth and discount rates
+- Prompt now captures reserves_growth_pct and returns discount rates
+- Deal engine transform passes fixed_annual reserves and returns inputs
+- File: services/mcp-server/src/index.ts
+- Build: pnpm --filter @gpc/deal-engine build && test; pnpm --filter @gpc/mcp-server build
 ```
 
 ---
