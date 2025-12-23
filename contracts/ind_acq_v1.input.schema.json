@@ -110,7 +110,11 @@
                 "repairs_maintenance": { "type": "number", "minimum": 0 },
                 "security": { "type": "number", "minimum": 0 },
                 "property_taxes": { "type": "number", "minimum": 0 },
-                "other_expense_1": { "type": "number", "minimum": 0 }
+                "other_expense_1": { "type": "number", "minimum": 0 },
+                "reserves": { "type": "number", "minimum": 0, "description": "Year 1 reserves amount" },
+                "reserves_growth_pct": { "type": "number", "minimum": -0.1, "maximum": 0.2, "description": "Annual growth rate for reserves (e.g., 0.025 = 2.5%)" },
+                "other_operating": { "type": "number", "minimum": 0, "description": "Other annual operating expenses (total $, not per SF)" },
+                "other_operating_growth_pct": { "type": "number", "minimum": -0.1, "maximum": 0.2, "description": "Annual growth rate for other operating expenses" }
               }
             },
 
@@ -412,6 +416,15 @@
         "exit_cap_rate": { "type": "number", "minimum": 0.01, "maximum": 0.2 },
         "sale_cost_pct": { "type": "number", "minimum": 0, "maximum": 0.1 },
         "forward_noi_months": { "type": "integer", "minimum": 0, "maximum": 24, "default": 12 }
+      }
+    },
+
+    "returns": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "discount_rate_unlevered": { "type": "number", "minimum": 0, "maximum": 0.5 },
+        "discount_rate_levered": { "type": "number", "minimum": 0, "maximum": 0.5 }
       }
     },
 

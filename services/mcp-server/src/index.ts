@@ -29,6 +29,7 @@ const RATE_LIMIT_MAX_REQUESTS_PER_SESSION = Number(process.env.RATE_LIMIT_MAX_RE
 // Cache build inputs for optional Deal Engine validation (keyed by job_id)
 const indAcqInputsByJobId = new Map<string, Record<string, unknown>>();
 const dealEngineValidationByJobId = new Map<string, ValidationComparison>();
+const appliedDefaultsByJobId = new Map<string, AppliedDefault[]>();
 
 // Instrumentation logger - redacts sensitive info
 const log = {
@@ -192,35 +193,90 @@ const inputSchema = await loadJson(contractsPath.inputSchema);
 const outputMapping = await loadJson(contractsPath.outputMapping);
 const validateInputsContract = ajv.compile(inputSchema);
 
-// Critical fields that must be provided (never invented by AI)
-const CRITICAL_FIELDS = [
-  "acquisition.purchase_price",
-  "rent_roll.tenants_in_place",
-  "exit.exit_cap_rate",
-  "debt.acquisition_loan.ltv_max",
-  "debt.acquisition_loan.rate.fixed_rate",
-];
-
 // Non-critical fields with sensible defaults
 const DEFAULT_VALUES: Record<string, unknown> = {
   "contract.contract_version": "IND_ACQ_V1",
   "contract.template_id": "IND_ACQ",
   "contract.currency": "USD",
+  "deal.project_name": "Untitled Deal",
+  "deal.city": "Unknown",
+  "deal.state": "TX",
+  "deal.hold_period_months": 60,
+  "acquisition.closing_cost_pct": 0.02,
   "operating.vacancy_pct": 0.05,
-  "operating.credit_loss_pct": 0.02,
+  "operating.credit_loss_pct": 0,
   "operating.inflation.rent": 0.03,
-  "operating.inflation.expenses": 0.025,
+  "operating.inflation.expenses": 0.03,
   "operating.inflation.taxes": 0.02,
-  "operating.expenses.management_fee_pct_egi": 0.04,
+  "operating.expenses.management_fee_pct_egi": 0,
+  "operating.expenses.fixed_annual.reserves": 0,
+  "operating.expenses.fixed_annual.reserves_growth_pct": 0,
+  "operating.expenses.fixed_annual.other_operating": 0,
+  "operating.expenses.fixed_annual.other_operating_growth_pct": 0,
   "operating.expenses.recoveries.mode": "NNN",
-  "acquisition.closing_cost_pct": 0.015,
   "debt.acquisition_loan.enabled": true,
+  "debt.acquisition_loan.ltv_max": 0.65,
   "debt.acquisition_loan.amort_years": 25,
-  "debt.acquisition_loan.io_months": 12,
+  "debt.acquisition_loan.io_months": 0,
   "debt.acquisition_loan.origination_fee_pct": 0.01,
   "debt.acquisition_loan.rate.type": "FIXED",
+  "debt.acquisition_loan.rate.fixed_rate": 0.065,
+  "exit.exit_cap_rate": 0.075,
   "exit.sale_cost_pct": 0.02,
   "exit.forward_noi_months": 12,
+  "returns.discount_rate_unlevered": 0.09,
+  "returns.discount_rate_levered": 0.09,
+};
+
+const DEFAULT_REASONS: Record<string, string> = {
+  "deal.project_name": "Not specified; assumed \"Untitled Deal\"",
+  "deal.city": "Not specified; assumed \"Unknown\"",
+  "deal.state": "Not specified; assumed \"TX\"",
+  "deal.hold_period_months": "Hold period not specified; assumed 60 months",
+  "deal.analysis_start_date": "Start date not specified; assumed first of next month",
+  "deal.net_sf": "Net SF not specified; assumed equal to gross_sf",
+  "deal.gross_sf": "Gross SF not specified; assumed equal to net_sf",
+  "acquisition.closing_cost_pct": "Not specified; assumed 2%",
+  "operating.vacancy_pct": "Not specified; assumed 5%",
+  "operating.credit_loss_pct": "Not specified; assumed 0%",
+  "operating.inflation.rent": "Not specified; assumed 3% annual rent growth",
+  "operating.inflation.expenses": "Not specified; assumed 3% annual expense growth",
+  "operating.inflation.taxes": "Not specified; assumed 2% annual tax growth",
+  "operating.expenses.management_fee_pct_egi": "Not specified; assumed 0% for NNN lease",
+  "operating.expenses.fixed_annual.reserves": "Not specified; assumed 0",
+  "operating.expenses.fixed_annual.reserves_growth_pct": "Not specified; assumed 0% annual growth",
+  "operating.expenses.fixed_annual.other_operating": "Not specified; assumed 0",
+  "operating.expenses.fixed_annual.other_operating_growth_pct": "Not specified; assumed 0% annual growth",
+  "operating.expenses.recoveries.mode": "Not specified; assumed NNN",
+  "debt.acquisition_loan.enabled": "Not specified; assumed enabled",
+  "debt.acquisition_loan.ltv_max": "Not specified; assumed 65% LTV",
+  "debt.acquisition_loan.amort_years": "Not specified; assumed 25-year amortization",
+  "debt.acquisition_loan.io_months": "Interest-only period not specified; assumed 0 months",
+  "debt.acquisition_loan.term_months": "Loan term not specified; assumed hold period",
+  "debt.acquisition_loan.origination_fee_pct": "Not specified; assumed 1%",
+  "debt.acquisition_loan.rate.type": "Not specified; assumed FIXED",
+  "debt.acquisition_loan.rate.fixed_rate": "Not specified; assumed 6.5%",
+  "exit.exit_month": "Exit month not specified; assumed hold period",
+  "exit.exit_cap_rate": "Not specified; assumed 7.5%",
+  "exit.sale_cost_pct": "Not specified; assumed 2%",
+  "exit.forward_noi_months": "Not specified; assumed 12 months",
+  "returns.discount_rate_unlevered": "Not specified; assumed 9%",
+  "returns.discount_rate_levered": "Not specified; assumed 9%",
+};
+
+const VALID_FIELD_HINTS: Record<string, string[]> = {
+  "/operating/expenses/fixed_annual": [
+    "insurance",
+    "utilities",
+    "repairs_maintenance",
+    "security",
+    "property_taxes",
+    "other_expense_1",
+    "reserves",
+    "reserves_growth_pct",
+    "other_operating",
+    "other_operating_growth_pct",
+  ],
 };
 
 // Build CSP directives for Apps SDK widget (legacy HTML meta tag)
@@ -608,14 +664,14 @@ function createIndAcqServer() {
       const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       let mergedInputs = (args.inputs ?? {}) as Record<string, unknown>;
       let extractionMeta: ExtractionMeta | undefined;
+      let appliedDefaults: AppliedDefault[] = [];
 
       // Check if this is an NL-only call (natural_language present, inputs missing/empty)
       const hasNL = args.natural_language && typeof args.natural_language === "string" && args.natural_language.trim();
       const hasInputs = args.inputs && Object.keys(args.inputs).length > 0;
 
-      // Default to extract_only for NL-only calls (no inputs), run otherwise
-      // This prevents accidental runs without all required inputs
-      const mode = args.mode ?? (hasNL && !hasInputs ? "extract_only" : "run");
+      // Default to run; only use extract_only if explicitly requested
+      const mode = args.mode ?? "run";
 
       log.info("build_model called", { requestId, mode, hasNL: !!hasNL, hasInputs: !!hasInputs });
 
@@ -648,37 +704,29 @@ function createIndAcqServer() {
             suggested_defaults: extraction.suggested_defaults ?? {},
           };
 
-          // If critical fields are missing, return needs_info
-          // Only block on truly critical missing fields (exact match, not sub-fields)
-          if (extraction.missing_fields && extraction.missing_fields.length > 0) {
-            const criticalMissing = extraction.missing_fields.filter((f) => {
-              // Exact match check - don't match sub-fields of arrays
-              // e.g., "rent_roll.tenants_in_place" is critical, but
-              // "rent_roll.tenants_in_place[0].lease_start" is not
-              return CRITICAL_FIELDS.some((cf) => {
-                if (f.path === cf) return true;
-                // For non-array critical fields, check if it's an exact path match
-                // Don't match array element sub-fields like [0].lease_start
-                if (f.path.startsWith(cf) && !f.path.includes("[")) return true;
-                return false;
-              });
-            });
-
-            if (criticalMissing.length > 0) {
-              return buildToolResponse({
-                status: "needs_info",
-                inputs: mergedInputs,
-                missing_fields: criticalMissing,
-                suggested_defaults: extraction.suggested_defaults ?? {},
-              });
-            }
-          }
         } catch (error) {
           return buildToolResponse({
             status: "failed",
             error: `NL extraction failed: ${String(error)}`,
           });
         }
+      }
+
+      // Normalize and apply defaults before any missing-field checks
+      const normalizedInputs = normalizeInputs(mergedInputs);
+      const defaultsResult = applyDefaults(normalizedInputs);
+      mergedInputs = defaultsResult.mergedInputs;
+      appliedDefaults = defaultsResult.appliedDefaults;
+
+      const missingRequired = getMissingRequiredFields(mergedInputs);
+      if (missingRequired.length > 0) {
+        return buildToolResponse({
+          status: "needs_info",
+          inputs: mergedInputs,
+          missing_fields: missingRequired,
+          suggested_defaults: extractionMeta?.suggested_defaults ?? {},
+          assumptions_applied: appliedDefaults,
+        });
       }
 
       // Ensure rollover coverage for leases expiring before exit
@@ -692,39 +740,32 @@ function createIndAcqServer() {
 
       // If mode is extract_only, return the merged inputs without running
       if (mode === "extract_only") {
-        // Validate to find any remaining missing fields
         const validation = validateInputs(mergedInputs);
-
         if (validation.status === "invalid") {
-          // Convert validation errors to missing fields for extract_only mode
-          const missingFromValidation = validation.errors
-            .filter((e) => e.message?.includes("required"))
-            .map((e) => ({
-              path: e.path,
-              description: e.message,
-            }));
-
-          return buildToolResponse({
-            status: "needs_info",
-            inputs: mergedInputs,
-            missing_fields: [...(extractionMeta?.missing_fields ?? []), ...missingFromValidation],
-            suggested_defaults: extractionMeta?.suggested_defaults ?? {},
-          });
+          return buildToolResponse(validation);
         }
 
         return buildToolResponse({
           status: "ok",
           inputs: mergedInputs,
-          missing_fields: extractionMeta?.missing_fields ?? [],
+          missing_fields: [],
           suggested_defaults: extractionMeta?.suggested_defaults ?? {},
+          assumptions_applied: appliedDefaults,
           ...(rolloverWarnings.length > 0 ? { rollover_notes: rolloverWarnings } : {}),
         });
       }
 
       // mode === "run" - validate and build
-      const validation = validateInputs(mergedInputs);
+      let validation = validateInputs(mergedInputs);
       if (validation.status === "invalid") {
-        return buildToolResponse(validation);
+        const normalizedRetry = normalizeInputs(mergedInputs);
+        if (normalizedRetry !== mergedInputs) {
+          mergedInputs = normalizedRetry;
+        }
+        validation = validateInputs(mergedInputs);
+        if (validation.status === "invalid") {
+          return buildToolResponse(validation);
+        }
       }
 
       let response: Response;
@@ -764,6 +805,8 @@ function createIndAcqServer() {
         indAcqInputsByJobId.set(payload.job_id, mergedInputs);
         dealEngineValidationByJobId.delete(payload.job_id);
       }
+
+      appliedDefaultsByJobId.set(payload.job_id, appliedDefaults);
 
       return buildToolResponse({
         status: "started",
@@ -836,6 +879,9 @@ function createIndAcqServer() {
 
       if (status === "complete") {
         const outputs = (payload.outputs ?? {}) as Record<string, unknown>;
+        const assumptionsApplied = appliedDefaultsByJobId.get(jobId) ?? [];
+        appliedDefaultsByJobId.delete(jobId);
+        const guidance = buildGuidance(assumptionsApplied);
 
         // Log completion with redacted download_url
         log.info("Job complete", {
@@ -874,12 +920,15 @@ function createIndAcqServer() {
           download_url_expiry: payload.download_url_expiry ?? null,
           warning: payload.warning ?? null,
           deal_engine_validation: dealEngineValidation,
+          assumptions_applied: assumptionsApplied,
+          guidance,
         });
       }
 
       if (status === "failed") {
         indAcqInputsByJobId.delete(jobId);
         dealEngineValidationByJobId.delete(jobId);
+        appliedDefaultsByJobId.delete(jobId);
         log.error("Job failed", { job_id: jobId, error: payload.error });
         return buildToolResponse({
           status,
@@ -902,13 +951,40 @@ function createIndAcqServer() {
 // Validation (no partial mode exposed to clients)
 function validateInputs(inputs: unknown): ValidationResult {
   if (!validateInputsContract(inputs)) {
-    const errors = (validateInputsContract.errors ?? []).map((error: { instancePath?: string; message?: string }) => ({
-      path: error.instancePath || "/",
-      message: error.message ?? "Invalid value.",
-    }));
+    const errors = (validateInputsContract.errors ?? []).map((error: Record<string, unknown>) => formatValidationError(error));
     return { status: "invalid", errors };
   }
   return { status: "ok" };
+}
+
+function formatValidationError(error: Record<string, unknown>): { path: string; message: string } {
+  const instancePath = (error.instancePath as string | undefined) ?? "";
+  const keyword = (error.keyword as string | undefined) ?? "";
+  const params = (error.params as Record<string, unknown> | undefined) ?? {};
+  const basePath = formatInstancePath(instancePath);
+
+  if (keyword === "required") {
+    const missingProperty = params.missingProperty as string | undefined;
+    const path = missingProperty ? (basePath ? `${basePath}.${missingProperty}` : missingProperty) : basePath || "/";
+    return { path, message: `Missing required field '${missingProperty ?? "unknown"}'.` };
+  }
+
+  if (keyword === "additionalProperties") {
+    const additional = params.additionalProperty as string | undefined;
+    const path = additional ? (basePath ? `${basePath}.${additional}` : additional) : basePath || "/";
+    const validFields = VALID_FIELD_HINTS[instancePath] ?? [];
+    const suggestion = validFields.length > 0
+      ? ` Did you mean '${validFields.slice(0, 2).join("' or '")}'? Valid fields are: ${validFields.join(", ")}.`
+      : "";
+    return { path, message: `Unknown field '${additional ?? "unknown"}'.${suggestion}` };
+  }
+
+  return { path: basePath || "/", message: (error.message as string | undefined) ?? "Invalid value." };
+}
+
+function formatInstancePath(instancePath: string): string {
+  if (!instancePath) return "";
+  return instancePath.replace(/\//g, ".").replace(/^\./, "");
 }
 
 function buildToolResponse(result: ToolResult) {
@@ -937,6 +1013,8 @@ function buildToolResponse(result: ToolResult) {
       ...(result.deal_engine_validation?.scenario
         ? { scenario: result.deal_engine_validation.scenario }
         : {}),
+      ...(result.assumptions_applied ? { assumptions_applied: result.assumptions_applied } : {}),
+      ...(result.guidance ? { guidance: result.guidance } : {}),
     };
 
     // Full outputs in metadata for widget consumption
@@ -1038,7 +1116,20 @@ CRITICAL RULES:
 3. Convert percentages to decimals (5% -> 0.05)
 4. Convert years to months where appropriate (5 year hold -> 60 months, exit_month = hold_period_months)
 5. For dates not specified, use reasonable estimates based on context (e.g., analysis_start_date = next month's 1st)
-6. Capture reserves escalation phrases (e.g., "escalating 2.5% annually") as reserves_growth_pct
+6. Use the EXACT field paths shown below (schema is strict; unknown fields will fail)
+7. If operating expenses or reserves are stated as $/SF/year, convert to total annual $ using net_sf (or gross_sf if net_sf missing)
+8. Capture reserves escalation phrases (e.g., "escalating 2.5% annually") as reserves_growth_pct
+
+FIELD MAPPING (use these exact paths):
+- Operating expenses ($/SF/year stated) → operating.expenses.fixed_annual.other_operating = $/SF * net_sf
+- Operating expense growth → operating.expenses.fixed_annual.other_operating_growth_pct
+- Reserves ($/SF/year stated) → operating.expenses.fixed_annual.reserves = $/SF * net_sf
+- Reserves growth → operating.expenses.fixed_annual.reserves_growth_pct
+- Do NOT use capex_reserves_per_nsf_annual for reserves
+- Discount rate → returns.discount_rate_unlevered AND returns.discount_rate_levered
+- Vacancy → operating.vacancy_pct
+- Credit loss → operating.credit_loss_pct (default 0 if not stated)
+- Management fee → operating.expenses.management_fee_pct_egi (default 0 if not stated for NNN)
 
 Return a JSON object with this structure:
 {
@@ -1058,17 +1149,19 @@ Return a JSON object with this structure:
     },
     "acquisition": {
       "purchase_price": number,
-      "closing_cost_pct": number (default 0.015)
+      "closing_cost_pct": number (default 0.02)
     },
     "operating": {
       "vacancy_pct": number (default 0.05),
-      "credit_loss_pct": number (default 0.02),
-      "inflation": { "rent": 0.03, "expenses": 0.025, "taxes": 0.02 },
+      "credit_loss_pct": number (default 0),
+      "inflation": { "rent": 0.03, "expenses": 0.03, "taxes": 0.02 },
       "expenses": {
-        "management_fee_pct_egi": number (default 0.04),
+        "management_fee_pct_egi": number (default 0),
         "fixed_annual": {
           "reserves": number,
-          "reserves_growth_pct": number
+          "reserves_growth_pct": number,
+          "other_operating": number,
+          "other_operating_growth_pct": number
         },
         "recoveries": { "mode": "NNN" | "MOD_GROSS" | "GROSS" }
       }
@@ -1103,7 +1196,7 @@ Return a JSON object with this structure:
         "enabled": true,
         "ltv_max": number,
         "amort_years": number (default 25),
-        "io_months": number (default 12),
+        "io_months": number (default 0),
         "term_months": number,
         "origination_fee_pct": number (default 0.01),
         "rate": {
@@ -1139,7 +1232,7 @@ PASS B - Normalize consistency:
 - Dates should be internally consistent
 
 DISCOUNT RATE EXTRACTION:
-- If user provides a discount rate without leverage qualifier, set returns.discount_rate_unlevered
+- If user provides a discount rate without leverage qualifier, set BOTH returns.discount_rate_unlevered and returns.discount_rate_levered
 - If user provides levered/unlevered discount rates explicitly, map both fields
 
 ROLLOVER EXTRACTION:
@@ -1151,6 +1244,17 @@ ROLLOVER EXTRACTION:
 interface ExtractionMeta {
   missing_fields: { path: string; description: string }[];
   suggested_defaults: Record<string, unknown>;
+}
+
+interface AppliedDefault {
+  field: string;
+  value: unknown;
+  reason: string;
+}
+
+interface Guidance {
+  message: string;
+  editable_cells: { field: string; cell: string }[];
 }
 
 interface ExtractionOutput {
@@ -1192,29 +1296,14 @@ async function extractInputsFromNL(description: string): Promise<ExtractionOutpu
       suggested_defaults?: Record<string, unknown>;
     };
 
-    // Apply default values for non-critical fields
-    const inputsWithDefaults = applyDefaults(parsed.inputs ?? {});
-
-    // Identify missing critical fields
-    const missingCritical: { path: string; description: string }[] = [];
-    for (const criticalPath of CRITICAL_FIELDS) {
-      if (!hasNestedValue(inputsWithDefaults, criticalPath)) {
-        missingCritical.push({
-          path: criticalPath,
-          description: `Required: ${criticalPath.split(".").pop()?.replace(/_/g, " ")}`,
-        });
-      }
-    }
-
-    const allMissing = [...(parsed.missing_fields ?? []), ...missingCritical];
-    const uniqueMissing = allMissing.filter(
-      (item, index, self) => index === self.findIndex((t) => t.path === item.path)
-    );
+    const defaultsResult = applyDefaults(normalizeInputs(parsed.inputs ?? {}));
+    const inputsWithDefaults = defaultsResult.mergedInputs;
+    const requiredMissing = getMissingRequiredFields(inputsWithDefaults);
 
     return {
-      status: uniqueMissing.length > 0 ? "needs_info" : "ok",
+      status: requiredMissing.length > 0 ? "needs_info" : "ok",
       inputs: inputsWithDefaults,
-      missing_fields: uniqueMissing,
+      missing_fields: requiredMissing,
       suggested_defaults: parsed.suggested_defaults ?? {},
       tokenUsage,
     };
@@ -1224,16 +1313,223 @@ async function extractInputsFromNL(description: string): Promise<ExtractionOutpu
   }
 }
 
-function applyDefaults(inputs: Record<string, unknown>): Record<string, unknown> {
+function applyDefaults(inputs: Record<string, unknown>): { mergedInputs: Record<string, unknown>; appliedDefaults: AppliedDefault[] } {
   const result = JSON.parse(JSON.stringify(inputs)) as Record<string, unknown>;
+  const appliedDefaults: AppliedDefault[] = [];
 
   for (const [path, value] of Object.entries(DEFAULT_VALUES)) {
     if (!hasNestedValue(result, path)) {
       setNestedValue(result, path, value);
+      appliedDefaults.push({
+        field: path,
+        value,
+        reason: DEFAULT_REASONS[path] ?? "Not specified; default applied",
+      });
     }
   }
 
-  return result;
+  if (!hasNestedValue(result, "deal.analysis_start_date")) {
+    const startDate = getFirstDayOfNextMonth();
+    setNestedValue(result, "deal.analysis_start_date", startDate);
+    appliedDefaults.push({
+      field: "deal.analysis_start_date",
+      value: startDate,
+      reason: DEFAULT_REASONS["deal.analysis_start_date"] ?? "Not specified; default applied",
+    });
+  }
+
+  const grossSf = getNestedNumber(result, "deal.gross_sf");
+  const netSf = getNestedNumber(result, "deal.net_sf");
+
+  if (grossSf == null && netSf != null) {
+    setNestedValue(result, "deal.gross_sf", netSf);
+    appliedDefaults.push({
+      field: "deal.gross_sf",
+      value: netSf,
+      reason: DEFAULT_REASONS["deal.gross_sf"] ?? "Not specified; default applied",
+    });
+  }
+
+  if (netSf == null && grossSf != null) {
+    setNestedValue(result, "deal.net_sf", grossSf);
+    appliedDefaults.push({
+      field: "deal.net_sf",
+      value: grossSf,
+      reason: DEFAULT_REASONS["deal.net_sf"] ?? "Not specified; default applied",
+    });
+  }
+
+  const holdPeriod = getNestedNumber(result, "deal.hold_period_months") ?? 60;
+  if (!hasNestedValue(result, "exit.exit_month")) {
+    setNestedValue(result, "exit.exit_month", holdPeriod);
+    appliedDefaults.push({
+      field: "exit.exit_month",
+      value: holdPeriod,
+      reason: DEFAULT_REASONS["exit.exit_month"] ?? "Not specified; default applied",
+    });
+  }
+
+  if (!hasNestedValue(result, "debt.acquisition_loan.term_months")) {
+    setNestedValue(result, "debt.acquisition_loan.term_months", holdPeriod);
+    appliedDefaults.push({
+      field: "debt.acquisition_loan.term_months",
+      value: holdPeriod,
+      reason: DEFAULT_REASONS["debt.acquisition_loan.term_months"] ?? "Not specified; default applied",
+    });
+  }
+
+  return { mergedInputs: result, appliedDefaults };
+}
+
+function getMissingRequiredFields(inputs: Record<string, unknown>): { path: string; description: string }[] {
+  const missing: { path: string; description: string }[] = [];
+  const grossSf = getNestedNumber(inputs, "deal.gross_sf");
+  const netSf = getNestedNumber(inputs, "deal.net_sf");
+  const purchasePrice = getNestedNumber(inputs, "acquisition.purchase_price");
+  const tenants = getNestedValue(inputs, "rent_roll.tenants_in_place");
+
+  if (grossSf == null && netSf == null) {
+    missing.push({ path: "deal.gross_sf", description: "Required: gross_sf (or provide net_sf)" });
+  }
+
+  if (purchasePrice == null) {
+    missing.push({ path: "acquisition.purchase_price", description: "Required: purchase_price" });
+  }
+
+  const hasTenantRent = Array.isArray(tenants) && tenants.some((tenant) => {
+    if (!tenant || typeof tenant !== "object") return false;
+    const rent = (tenant as Record<string, unknown>)["current_rent_psf_annual"];
+    return typeof rent === "number" && Number.isFinite(rent);
+  });
+
+  if (!hasTenantRent) {
+    missing.push({
+      path: "rent_roll.tenants_in_place[0].current_rent_psf_annual",
+      description: "Required: tenant rent (current_rent_psf_annual)",
+    });
+  }
+
+  return missing;
+}
+
+function getFirstDayOfNextMonth(): string {
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+  const nextMonth = month === 11 ? 0 : month + 1;
+  const nextYear = month === 11 ? year + 1 : year;
+  const monthStr = String(nextMonth + 1).padStart(2, "0");
+  return `${nextYear}-${monthStr}-01`;
+}
+
+function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split(".");
+  let current: unknown = obj;
+
+  for (const part of parts) {
+    if (current === null || current === undefined || typeof current !== "object") {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[part];
+  }
+
+  return current;
+}
+
+function getNestedNumber(obj: Record<string, unknown>, path: string): number | null {
+  const value = getNestedValue(obj, path);
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizeInputs(inputs: Record<string, unknown>): Record<string, unknown> {
+  const clone = JSON.parse(JSON.stringify(inputs)) as Record<string, unknown>;
+  return normalizeValue(clone, "") as Record<string, unknown>;
+}
+
+function normalizeValue(value: unknown, path: string): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item, index) => normalizeValue(item, `${path}[${index}]`));
+  }
+
+  if (value && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      const nextPath = path ? `${path}.${key}` : key;
+      result[key] = normalizeValue(child, nextPath);
+    }
+    return result;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    const asNumber = parseNumericString(trimmed);
+    if (asNumber !== null) {
+      const normalizedNumber = normalizePercentage(asNumber, path);
+      return normalizedNumber;
+    }
+
+    if (isDateField(path)) {
+      const parsedDate = normalizeDateString(trimmed);
+      if (parsedDate) return parsedDate;
+    }
+
+    return trimmed;
+  }
+
+  if (typeof value === "number") {
+    return normalizePercentage(value, path);
+  }
+
+  return value;
+}
+
+function parseNumericString(value: string): number | null {
+  const cleaned = value.replace(/[$,%]/g, "").replace(/,/g, "").trim();
+  if (!cleaned) return null;
+  const numeric = Number(cleaned);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function normalizePercentage(value: number, path: string): number {
+  if (!isPercentField(path)) return value;
+  if (value > 1 && value < 100) {
+    return value / 100;
+  }
+  return value;
+}
+
+function isPercentField(path: string): boolean {
+  const lower = path.toLowerCase();
+  return lower.includes("pct") ||
+    lower.includes("rate") ||
+    lower.includes("ltv") ||
+    lower.includes("cap_rate") ||
+    lower.includes("discount_rate");
+}
+
+function isDateField(path: string): boolean {
+  const lower = path.toLowerCase();
+  return lower.endsWith("_date") ||
+    lower.endsWith("analysis_start_date") ||
+    lower.endsWith("lease_start") ||
+    lower.endsWith("lease_end");
+}
+
+function normalizeDateString(value: string): string | null {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const year = parsed.getUTCFullYear();
+  const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function buildGuidance(appliedDefaults: AppliedDefault[]): Guidance | undefined {
+  if (appliedDefaults.length === 0) return undefined;
+  return {
+    message: "Model completed with assumptions listed above. To adjust, specify these values in your next request or download the Excel file to edit directly.",
+    editable_cells: [],
+  };
 }
 
 function hasNestedValue(obj: Record<string, unknown>, path: string): boolean {
@@ -1379,8 +1675,8 @@ type ValidationResult =
 
 type ToolResult =
   | ValidationResult
-  | { status: "needs_info"; inputs: Record<string, unknown>; missing_fields: { path: string; description: string }[]; suggested_defaults: Record<string, unknown>; rollover_notes?: string[] }
-  | { status: "ok"; inputs: Record<string, unknown>; missing_fields: { path: string; description: string }[]; suggested_defaults: Record<string, unknown>; rollover_notes?: string[] }
+  | { status: "needs_info"; inputs: Record<string, unknown>; missing_fields: { path: string; description: string }[]; suggested_defaults: Record<string, unknown>; assumptions_applied?: AppliedDefault[]; rollover_notes?: string[] }
+  | { status: "ok"; inputs: Record<string, unknown>; missing_fields: { path: string; description: string }[]; suggested_defaults: Record<string, unknown>; assumptions_applied?: AppliedDefault[]; rollover_notes?: string[] }
   | { status: "started"; job_id: string; rollover_notes?: string[] }
   | { status: "pending"; job_id: string }
   | { status: "running"; job_id: string }
@@ -1393,6 +1689,8 @@ type ToolResult =
       download_url_expiry: string | null;
       warning?: string | null;
       deal_engine_validation?: ValidationComparison;
+      assumptions_applied?: AppliedDefault[];
+      guidance?: Guidance;
     }
   | { status: "failed"; job_id?: string; error: string };
 
