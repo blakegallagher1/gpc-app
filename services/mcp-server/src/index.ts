@@ -523,6 +523,7 @@ function createIndAcqServer() {
         log.info("Job complete", {
           job_id: jobId,
           download_url: payload.download_url ? "[URL_PRESENT]" : null,
+          warning: payload.warning ?? null,
         });
         return buildToolResponse({
           status,
@@ -531,6 +532,7 @@ function createIndAcqServer() {
           file_path: payload.file_path ?? null,
           download_url: payload.download_url ?? null,
           download_url_expiry: payload.download_url_expiry ?? null,
+          warning: payload.warning ?? null,
         });
       }
 
@@ -587,6 +589,8 @@ function buildToolResponse(result: ToolResult) {
       metrics: summaryMetrics,
       download_url: result.download_url,
       download_url_expiry: result.download_url_expiry,
+      // Include warning if MT template was quarantined
+      ...(result.warning ? { warning: result.warning } : {}),
     };
 
     // Full outputs in metadata for widget consumption
@@ -914,7 +918,7 @@ type ToolResult =
   | { status: "started"; job_id: string }
   | { status: "pending"; job_id: string }
   | { status: "running"; job_id: string }
-  | { status: "complete"; job_id: string; outputs: Record<string, unknown>; file_path: string | null; download_url: string | null; download_url_expiry: string | null }
+  | { status: "complete"; job_id: string; outputs: Record<string, unknown>; file_path: string | null; download_url: string | null; download_url_expiry: string | null; warning?: string | null }
   | { status: "failed"; job_id?: string; error: string };
 
 const httpServer = createServer(async (req, res) => {

@@ -98,6 +98,13 @@ export function ResultsView({ runState, onRunAgain }: Props) {
       {/* Results */}
       {runState.phase === "complete" && (
         <>
+          {/* Warning Notice (e.g., MT template quarantined) */}
+          {runState.warning && (
+            <div className="warning-notice">
+              <strong>⚠ Notice:</strong> {runState.warning}
+            </div>
+          )}
+
           {/* Deal Type & Check Summary */}
           <div className="deal-type-row">
             <div className="deal-type-label">

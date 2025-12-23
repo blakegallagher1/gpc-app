@@ -117,6 +117,9 @@ const string TEMPLATE_SINGLE_TENANT = "IND_ACQ";
 const string TEMPLATE_MULTI_TENANT = "IND_ACQ_MT";
 const int MULTI_TENANT_THRESHOLD = 2; // 2+ tenants = multi-tenant template
 
+// Quarantined templates (broken, disabled pending repair)
+var quarantinedTemplates = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "IND_ACQ_MT" };
+
 app.MapGet("/health", () => Results.Ok(new { ok = true }));
 
 app.MapGet("/debug/last-error", () => Results.Ok(new {
@@ -321,10 +324,33 @@ app.MapPost("/v1/ind-acq/build", async (HttpRequest request) =>
 
     // Select template: explicit template_id > auto-select based on tenant count
     var selectedTemplateId = templateIdFromContract;
+    string? templateWarning = null;
+
+    // Check if explicitly requested template is quarantined
+    if (!string.IsNullOrEmpty(selectedTemplateId) && quarantinedTemplates.Contains(selectedTemplateId))
+    {
+        return Results.BadRequest(new
+        {
+            error = "template_quarantined",
+            message = $"{selectedTemplateId} is temporarily disabled pending template repair. Use IND_ACQ (single-tenant) instead."
+        });
+    }
+
     if (string.IsNullOrEmpty(selectedTemplateId))
     {
-        selectedTemplateId = tenantCount >= MULTI_TENANT_THRESHOLD ? TEMPLATE_MULTI_TENANT : TEMPLATE_SINGLE_TENANT;
-        LogStructured("INFO", "Auto-selected template", new { tenantCount, templateId = selectedTemplateId });
+        // Auto-select based on tenant count, but respect quarantine
+        if (tenantCount >= MULTI_TENANT_THRESHOLD)
+        {
+            // MT template is quarantined, fall back to ST with warning
+            selectedTemplateId = TEMPLATE_SINGLE_TENANT;
+            templateWarning = "Multi-tenant template is under repair; this run used the single-tenant template.";
+            LogStructured("WARN", "MT template quarantined, using ST fallback", new { tenantCount, templateId = selectedTemplateId });
+        }
+        else
+        {
+            selectedTemplateId = TEMPLATE_SINGLE_TENANT;
+            LogStructured("INFO", "Auto-selected template", new { tenantCount, templateId = selectedTemplateId });
+        }
     }
 
     // Validate template_id exists
@@ -372,7 +398,7 @@ app.MapPost("/v1/ind-acq/build", async (HttpRequest request) =>
     }
 
     var jobId = Guid.NewGuid().ToString("N");
-    var job = new JobState { Status = JobStatus.Pending };
+    var job = new JobState { Status = JobStatus.Pending, Warning = templateWarning };
     jobs[jobId] = job;
 
     _ = Task.Run(async () =>
@@ -402,6 +428,7 @@ app.MapGet("/v1/jobs/{jobId}", (string jobId) =>
         status = job.Status,
         outputs = job.Outputs,
         error = job.Error,
+        warning = job.Warning,
         file_path = job.FilePath,
         download_url = job.DownloadUrl,
         download_url_expiry = job.DownloadUrlExpiry
@@ -1971,6 +1998,7 @@ sealed class JobState
 {
     public string Status { get; set; } = JobStatus.Pending;
     public Dictionary<string, object?>? Outputs { get; set; }
+    public string? Warning { get; set; }
     public string? Error { get; set; }
     public string? FilePath { get; set; }
     public string? DownloadUrl { get; set; }

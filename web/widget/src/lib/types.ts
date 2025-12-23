@@ -121,6 +121,7 @@ export interface JobStatus {
   file_path?: string;
   download_url?: string;
   download_url_expiry?: string;
+  warning?: string;
   error?: string;
 }
 
@@ -129,7 +130,7 @@ export type RunState =
   | { phase: "validating" }
   | { phase: "building" }
   | { phase: "polling"; job_id: string }
-  | { phase: "complete"; job_id: string; outputs: Record<string, unknown>; file_path: string | null; download_url: string | null; download_url_expiry: string | null }
+  | { phase: "complete"; job_id: string; outputs: Record<string, unknown>; file_path: string | null; download_url: string | null; download_url_expiry: string | null; warning?: string | null }
   | { phase: "failed"; error: string };
 
 export interface MissingField {

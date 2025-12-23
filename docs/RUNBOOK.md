@@ -70,6 +70,15 @@ Expected output: All tests pass with IRRs in target ranges (Unlevered: 8-18%, Le
 
 **Note**: E2E regression tests require running services. CI validates builds and contracts only. Run regression tests locally before merging or in a staging environment.
 
+### Quarantined Test Cases
+
+Multi-tenant (IND_ACQ_MT) test cases are currently **quarantined** due to template formula errors. These are automatically skipped with message:
+```
+SKIP: case_003.multi_tenant: IND_ACQ_MT quarantined (template broken)
+```
+
+See [IND_ACQ_MT_STATUS.md](./IND_ACQ_MT_STATUS.md) for details and re-enable instructions.
+
 ---
 
 ## Staging Gate

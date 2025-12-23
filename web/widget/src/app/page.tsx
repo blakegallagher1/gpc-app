@@ -148,6 +148,7 @@ export default function IndAcqWidget() {
           file_path: finalStatus.file_path || null,
           download_url: finalStatus.download_url || null,
           download_url_expiry: finalStatus.download_url_expiry || null,
+          warning: finalStatus.warning || null,
         });
       } else {
         setRunState({
