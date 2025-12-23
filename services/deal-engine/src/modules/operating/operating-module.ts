@@ -2,8 +2,6 @@ import { Series } from "../../core/series";
 import { DealContext } from "../../types/context";
 import { OperatingInput } from "../../types/inputs";
 import { Module, ModuleResult, ValidationResult } from "../../types/module";
-
-type OperatingModuleResult = ModuleResult<OperatingModuleOutputs>;
 import { LeaseModuleOutputs } from "../lease/lease-module";
 
 export interface OperatingModuleOutputs {
@@ -14,6 +12,8 @@ export interface OperatingModuleOutputs {
   expenseRecoveries: Series;
   netOperatingIncome: Series;
 }
+
+type OperatingModuleResult = ModuleResult<OperatingModuleOutputs>;
 
 const DEFAULT_OPERATING: OperatingInput = {
   vacancy_pct: 0.05,

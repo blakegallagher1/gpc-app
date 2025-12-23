@@ -8,8 +8,6 @@ import {
 } from "../../types/inputs";
 import { Module, ModuleResult, ValidationResult } from "../../types/module";
 
-type LeaseModuleResult = ModuleResult<LeaseModuleOutputs>;
-
 export interface TenantSchedule {
   tenantName: string;
   sf: number;
@@ -27,6 +25,8 @@ export interface LeaseModuleOutputs {
   totalTiCost: number;
   totalLcCost: number;
 }
+
+type LeaseModuleResult = ModuleResult<LeaseModuleOutputs>;
 
 function assertLeaseInput(inputs: unknown): asserts inputs is LeaseInput {
   if (!inputs || typeof inputs !== "object") {

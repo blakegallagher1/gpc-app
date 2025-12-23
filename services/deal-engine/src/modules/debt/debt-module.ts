@@ -3,8 +3,6 @@ import { pmt, annualToMonthly } from "../../core/math-utils";
 import { DealContext } from "../../types/context";
 import { DebtInput } from "../../types/inputs";
 import { Module, ModuleResult, ValidationResult } from "../../types/module";
-
-type DebtModuleResult = ModuleResult<DebtModuleOutputs>;
 import { OperatingModuleOutputs } from "../operating/operating-module";
 
 export interface DebtModuleOutputs {
@@ -17,6 +15,8 @@ export interface DebtModuleOutputs {
   dscr: Series;
   averageDscr: number;
 }
+
+type DebtModuleResult = ModuleResult<DebtModuleOutputs>;
 
 function assertDebtInput(inputs: unknown): asserts inputs is DebtInput | undefined {
   if (inputs === undefined) return;
@@ -99,6 +99,7 @@ export class DebtModule implements Module<DebtModuleOutputs> {
       };
       context.outputs.debt = outputs;
       context.cashflows.debtService = zeros;
+      context.metrics.averageDscr = 999;
       return { success: true, outputs };
     }
 

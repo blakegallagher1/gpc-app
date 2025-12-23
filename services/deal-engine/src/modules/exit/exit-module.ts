@@ -3,8 +3,6 @@ import { irr } from "../../core/math-utils";
 import { DealContext } from "../../types/context";
 import { ExitInput } from "../../types/inputs";
 import { Module, ModuleResult, ValidationResult } from "../../types/module";
-
-type ExitModuleResult = ModuleResult<ExitModuleOutputs>;
 import { OperatingModuleOutputs } from "../operating/operating-module";
 import { DebtModuleOutputs } from "../debt/debt-module";
 
@@ -21,6 +19,8 @@ export interface ExitModuleOutputs {
   leveredIrr: number;
   equityMultiple: number;
 }
+
+type ExitModuleResult = ModuleResult<ExitModuleOutputs>;
 
 function assertExitInput(inputs: unknown): asserts inputs is ExitInput {
   if (!inputs || typeof inputs !== "object") {
