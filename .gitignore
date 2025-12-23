@@ -15,6 +15,7 @@ obj/
 
 # OS files
 .DS_Store
+.claude/settings.local.json
 Thumbs.db
 
 # IDE
