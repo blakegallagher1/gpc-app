@@ -1,704 +1,594 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://gpc-app.local/schemas/deal_engine_v0.schema.json",
-  "title": "DEAL_ENGINE_V0 Contract - Modular Inputs",
+  "$id": "https://gpc-app/contracts/deal_engine_v0.schema.json",
+  "title": "Deal Engine V0",
   "type": "object",
   "additionalProperties": false,
-  "required": ["contract", "deal", "modules"],
+  "required": ["contract", "deal", "asset", "modules"],
   "properties": {
     "contract": {
       "type": "object",
-      "description": "Contract metadata for the code-first Deal Engine.",
       "additionalProperties": false,
-      "required": ["contract_version", "engine_version"],
+      "required": ["contract_version", "template_id", "currency", "time_step"],
       "properties": {
-        "contract_version": {
-          "type": "string",
-          "const": "DEAL_ENGINE_V0",
-          "description": "Contract identifier for this payload."
+        "contract_version": { "const": "DEAL_ENGINE_V0" },
+        "template_id": { "type": "string" },
+        "currency": { "type": "string", "enum": ["USD"] },
+        "time_step": { "type": "string", "enum": ["monthly", "quarterly", "annual"] }
+      }
+    },
+    "deal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_name", "analysis_start_date"],
+      "properties": {
+        "project_name": { "type": "string", "minLength": 1 },
+        "address": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string", "minLength": 2, "maxLength": 2 },
+        "analysis_start_date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "hold_period_months": { "type": "integer", "minimum": 1 },
+        "hold_period_quarters": { "type": "integer", "minimum": 1 },
+        "hold_period_years": { "type": "integer", "minimum": 1 },
+        "close_month": { "type": "integer", "minimum": 0, "default": 0 }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["asset_class"],
+      "properties": {
+        "asset_class": { "type": "string", "enum": ["industrial", "retail", "multifamily", "mhp", "storage", "ios", "fund"] },
+        "subtype": { "type": "string" },
+        "gross_sf": { "type": "number", "minimum": 0 },
+        "net_sf": { "type": "number", "minimum": 0 },
+        "unit_count": { "type": "integer", "minimum": 0 },
+        "lot_count": { "type": "integer", "minimum": 0 },
+        "site_acres": { "type": "number", "minimum": 0 }
+      }
+    },
+    "acquisition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["purchase_price"],
+      "properties": {
+        "purchase_price": { "type": "number", "minimum": 0 },
+        "closing_cost_pct": { "type": "number", "minimum": 0, "maximum": 0.2 },
+        "closing_cost_fixed": { "type": "number", "minimum": 0 }
+      }
+    },
+    "modules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lease": { "$ref": "#/$defs/LeaseModuleV0" },
+        "operating": { "$ref": "#/$defs/OperatingModuleV0" },
+        "capex": { "$ref": "#/$defs/CapexModuleV0" },
+        "development": { "$ref": "#/$defs/DevelopmentModuleV0" },
+        "debt": { "$ref": "#/$defs/DebtModuleV0" },
+        "portfolio": { "$ref": "#/$defs/PortfolioModuleV0" },
+        "fund": { "$ref": "#/$defs/FundModuleV0" },
+        "equity": { "$ref": "#/$defs/EquityWaterfallModuleV0" },
+        "exit": { "$ref": "#/$defs/ExitModuleV0" },
+        "scenario": { "$ref": "#/$defs/ScenarioRunnerV0" }
+      }
+    },
+    "ui_meta": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+
+  "$defs": {
+    "Money": { "type": "number" },
+
+    "LeaseModuleV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": { "type": "string", "enum": ["commercial_rent_roll", "multifamily_unit_mix", "storage_unit_mix", "mhp_lot_rent"] },
+        "tenants_in_place": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/CommercialTenantV0" },
+          "default": []
         },
-        "engine_version": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Deal Engine implementation version (e.g., semver)."
+        "unit_types": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/UnitTypeV0" },
+          "default": []
+        },
+        "lots_total": { "type": "integer", "minimum": 0 },
+        "lots_occupied_initial": { "type": "integer", "minimum": 0 },
+        "lot_rent_monthly_initial": { "type": "number", "minimum": 0 },
+        "annual_lot_rent_growth_pct": { "type": "number", "minimum": 0, "maximum": 1 },
+        "occupancy_ramp": { "$ref": "#/$defs/OccupancyRampV0" },
+        "lease_up": { "$ref": "#/$defs/LeaseUpV0" },
+        "market_rollover": { "$ref": "#/$defs/MarketRolloverV0" }
+      }
+    },
+
+    "CommercialTenantV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tenant_name", "area", "lease_start", "lease_end", "rent_type", "base_rent"],
+      "properties": {
+        "tenant_id": { "type": "string" },
+        "tenant_name": { "type": "string" },
+        "area": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["unit", "value"],
+          "properties": {
+            "unit": { "type": "string", "enum": ["sf", "acres"] },
+            "value": { "type": "number", "minimum": 0 }
+          }
+        },
+        "lease_start": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "lease_end": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "rent_type": { "type": "string", "enum": ["absolute_nnn", "nnn", "gross", "modified_gross", "ground_lease"] },
+        "base_rent": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["unit", "amount"],
+          "properties": {
+            "unit": { "type": "string", "enum": ["psf_annual", "total_monthly", "total_annual", "per_acre_monthly", "per_acre_annual"] },
+            "amount": { "type": "number", "minimum": 0 }
+          }
+        },
+        "annual_bump_pct": { "type": "number", "minimum": 0, "maximum": 1, "default": 0 },
+        "rent_steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["start", "end", "rent"],
+            "properties": {
+              "start": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+              "end": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+              "rent": { "$ref": "#/$defs/CommercialTenantV0/properties/base_rent" }
+            }
+          },
+          "default": []
         }
       }
     },
 
-    "deal": {
+    "UnitTypeV0": {
       "type": "object",
-      "description": "High-level deal context shared across modules.",
       "additionalProperties": false,
-      "required": ["project_name", "city", "state", "analysis_start_date", "hold_period_months", "gross_sf", "net_sf"],
+      "required": ["unit_type_id", "name", "count", "starting_rent_monthly", "annual_rent_growth_pct"],
       "properties": {
-        "project_name": { "type": "string", "minLength": 1, "description": "Project name." },
-        "city": { "type": "string", "minLength": 1, "description": "Project city." },
-        "state": {
-          "type": "string",
-          "minLength": 2,
-          "maxLength": 2,
-          "description": "2-letter US state code (e.g., NY)."
-        },
-        "analysis_start_date": {
-          "type": "string",
-          "format": "date",
-          "description": "Model start date (month 0)."
-        },
-        "hold_period_months": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 600,
-          "description": "Hold period length in months."
-        },
-        "gross_sf": { "type": "number", "minimum": 0, "description": "Gross square feet." },
-        "net_sf": { "type": "number", "minimum": 0, "description": "Net rentable square feet." }
+        "unit_type_id": { "type": "string" },
+        "name": { "type": "string" },
+        "count": { "type": "integer", "minimum": 0 },
+        "avg_sf": { "type": "number", "minimum": 0 },
+        "starting_rent_monthly": { "type": "number", "minimum": 0 },
+        "annual_rent_growth_pct": { "type": "number", "minimum": 0, "maximum": 1 },
+        "starting_occupancy_pct": { "type": "number", "minimum": 0, "maximum": 1, "default": 1.0 },
+        "stabilized_occupancy_pct": { "type": "number", "minimum": 0, "maximum": 1 }
       }
     },
 
-    "modules": {
+    "OccupancyRampV0": {
       "type": "object",
-      "description": "Model modules. Required modules: acquisition, lease, exit.",
       "additionalProperties": false,
-      "required": ["acquisition", "lease", "exit"],
+      "required": ["start_month", "months_to_stabilize"],
       "properties": {
-        "acquisition": {
+        "start_month": { "type": "integer", "minimum": 0 },
+        "months_to_stabilize": { "type": "integer", "minimum": 1 }
+      }
+    },
+
+    "LeaseUpV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_month", "stabilized_occupancy_pct", "absorption_units_per_month"],
+      "properties": {
+        "start_month": { "type": "integer", "minimum": 0 },
+        "stabilized_occupancy_pct": { "type": "number", "minimum": 0, "maximum": 1 },
+        "absorption_units_per_month": { "type": "number", "minimum": 0 }
+      }
+    },
+
+    "MarketRolloverV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default"],
+      "properties": {
+        "default": {
           "type": "object",
-          "description": "Acquisition assumptions.",
           "additionalProperties": false,
-          "required": ["purchase_price", "closing_cost_pct"],
+          "required": ["downtime_months", "new_lease_term_months"],
           "properties": {
-            "purchase_price": { "type": "number", "minimum": 0, "description": "Purchase price." },
-            "closing_cost_pct": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 0.2,
-              "description": "Acquisition closing costs as a percent of purchase price (decimal)."
-            },
-            "close_month": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Months from analysis start until closing (0 = close immediately)."
-            },
-            "option_fee": {
-              "type": "number",
-              "minimum": 0,
-              "description": "Non-refundable option fee paid at month 0."
-            },
-            "reserves_at_closing": {
-              "type": "number",
-              "minimum": 0,
-              "description": "Reserves funded at closing."
-            }
+            "market_rent_psf_annual": { "type": "number", "minimum": 0 },
+            "downtime_months": { "type": "integer", "minimum": 0 },
+            "renewal_probability": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.0 },
+            "ti_psf": { "type": "number", "minimum": 0, "default": 0 },
+            "lc_pct_of_total_rent": { "type": "number", "minimum": 0, "maximum": 1, "default": 0 },
+            "leasing_commission_pct_of_total_rent": { "type": "number", "minimum": 0, "maximum": 1, "default": 0 },
+            "new_lease_term_months": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+
+    "OperatingModuleV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vacancy_pct", "credit_loss_pct", "inflation", "expenses"],
+      "properties": {
+        "vacancy_pct": { "type": "number", "minimum": 0, "maximum": 1 },
+        "credit_loss_pct": { "type": "number", "minimum": 0, "maximum": 1 },
+        "inflation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rent", "expenses", "taxes"],
+          "properties": {
+            "rent": { "type": "number", "minimum": 0, "maximum": 1 },
+            "expenses": { "type": "number", "minimum": 0, "maximum": 1 },
+            "taxes": { "type": "number", "minimum": 0, "maximum": 1 }
           }
         },
-
-        "lease": {
-          "type": "object",
-          "description": "Lease and rent roll assumptions.",
-          "additionalProperties": false,
-          "required": ["tenants_in_place"],
-          "properties": {
-            "tenants_in_place": {
-              "type": "array",
-              "description": "In-place tenants and current lease terms.",
-              "minItems": 1,
-              "maxItems": 50,
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["tenant_name", "sf", "lease_start", "lease_end", "current_rent_psf_annual"],
-                "properties": {
-                  "tenant_name": { "type": "string", "minLength": 1, "description": "Tenant name." },
-                  "sf": { "type": "number", "minimum": 0, "description": "Tenant leased square feet." },
-                  "lease_start": { "type": "string", "format": "date", "description": "Lease start date." },
-                  "lease_end": { "type": "string", "format": "date", "description": "Lease end date." },
-                  "current_rent_psf_annual": {
-                    "type": "number",
-                    "minimum": 0,
-                    "description": "Current base rent ($/SF/year)."
-                  },
-                  "annual_bump_pct": {
-                    "type": "number",
-                    "minimum": -0.1,
-                    "maximum": 0.2,
-                    "description": "Annual rent escalation (decimal)."
-                  },
-                  "economics_mode": {
-                    "type": "string",
-                    "enum": ["bump", "steps"],
-                    "description": "Rent growth mode: annual bump or explicit step schedule."
-                  },
-                  "rent_steps": {
-                    "type": "array",
-                    "description": "Explicit rent steps (ignored unless economics_mode=steps).",
-                    "maxItems": 50,
-                    "items": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": ["start_date", "end_date", "rent_psf"],
-                      "properties": {
-                        "start_date": { "type": "string", "format": "date", "description": "Step start date." },
-                        "end_date": { "type": "string", "format": "date", "description": "Step end date." },
-                        "rent_psf": { "type": "number", "minimum": 0, "description": "Rent ($/SF/year) for the step." }
-                      }
-                    }
-                  },
-                  "lease_type": {
-                    "type": "string",
-                    "enum": ["NNN", "MOD_GROSS", "GROSS"],
-                    "description": "Expense recovery structure."
-                  },
-                  "stop_amount_annual": {
-                    "type": "number",
-                    "minimum": 0,
-                    "description": "Expense stop amount (annual)."
-                  },
-                  "free_rent_months": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 24,
-                    "description": "Free rent period (months) at lease start."
-                  },
-                  "ti": {
-                    "type": "object",
-                    "description": "Tenant improvement (TI) assumption for renewals/rollover.",
-                    "additionalProperties": false,
-                    "properties": {
-                      "mode": {
-                        "type": "string",
-                        "enum": ["PER_SF", "FIXED"],
-                        "description": "TI input mode."
-                      },
-                      "value": { "type": "number", "minimum": 0, "description": "TI value per mode." }
-                    }
-                  },
-                  "lc": {
-                    "type": "object",
-                    "description": "Leasing commission (LC) assumption for renewals/rollover.",
-                    "additionalProperties": false,
-                    "properties": {
-                      "mode": {
-                        "type": "string",
-                        "enum": ["PCT_RENT", "PER_SF", "FIXED"],
-                        "description": "LC input mode."
-                      },
-                      "value": { "type": "number", "minimum": 0, "description": "LC value per mode." }
-                    }
-                  },
-                  "comments": { "type": "string", "description": "Optional free-form notes." }
-                }
-              }
-            },
-
-            "market_rollover": {
-              "type": "array",
-              "description": "Optional future/rollover lease terms (downtime + re-leasing economics).",
-              "maxItems": 50,
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["tenant_name", "market_rent_psf_annual", "lease_start", "lease_end"],
-                "properties": {
-                  "tenant_name": { "type": "string", "minLength": 1, "description": "Tenant name." },
-                  "sf": { "type": "number", "minimum": 0, "description": "Square footage for rollover tenant." },
-                  "market_rent_psf_annual": {
-                    "type": "number",
-                    "minimum": 0,
-                    "description": "Market base rent ($/SF/year) at rollover."
-                  },
-                  "annual_bump_pct": {
-                    "type": "number",
-                    "minimum": -0.1,
-                    "maximum": 0.2,
-                    "description": "Annual market rent escalation (decimal)."
-                  },
-                  "economics_mode": {
-                    "type": "string",
-                    "enum": ["bump", "steps"],
-                    "description": "Rent growth mode: annual bump or explicit step schedule."
-                  },
-                  "rent_steps": {
-                    "type": "array",
-                    "description": "Explicit rent steps (ignored unless economics_mode=steps).",
-                    "maxItems": 50,
-                    "items": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": ["start_date", "end_date", "rent_psf"],
-                      "properties": {
-                        "start_date": { "type": "string", "format": "date", "description": "Step start date." },
-                        "end_date": { "type": "string", "format": "date", "description": "Step end date." },
-                        "rent_psf": { "type": "number", "minimum": 0, "description": "Rent ($/SF/year) for the step." }
-                      }
-                    }
-                  },
-                  "lease_start": { "type": "string", "format": "date", "description": "New lease start date." },
-                  "lease_end": { "type": "string", "format": "date", "description": "New lease end date." },
-                  "lease_type": {
-                    "type": "string",
-                    "enum": ["NNN", "MOD_GROSS", "GROSS"],
-                    "description": "Expense recovery structure."
-                  },
-                  "stop_amount_annual": {
-                    "type": "number",
-                    "minimum": 0,
-                    "description": "Expense stop amount (annual)."
-                  },
-                  "free_rent_months": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 24,
-                    "description": "Free rent period (months) at lease start."
-                  },
-                  "downtime_months": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 60,
-                    "description": "Vacant downtime between leases (months)."
-                  },
-                  "ti": {
-                    "type": "object",
-                    "description": "Tenant improvement (TI) assumption for rollover.",
-                    "additionalProperties": false,
-                    "properties": {
-                      "mode": {
-                        "type": "string",
-                        "enum": ["PER_SF", "FIXED"],
-                        "description": "TI input mode."
-                      },
-                      "value": { "type": "number", "minimum": 0, "description": "TI value per mode." }
-                    }
-                  },
-                  "lc": {
-                    "type": "object",
-                    "description": "Leasing commission (LC) assumption for rollover.",
-                    "additionalProperties": false,
-                    "properties": {
-                      "mode": {
-                        "type": "string",
-                        "enum": ["PCT_RENT", "PER_SF", "FIXED"],
-                        "description": "LC input mode."
-                      },
-                      "value": { "type": "number", "minimum": 0, "description": "LC value per mode." }
-                    }
-                  }
-                }
-              }
-            }
-          }
+        "other_income": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/OtherIncomeLineV0" },
+          "default": []
         },
-
-        "operating": {
+        "expenses": {
           "type": "object",
-          "description": "Operating assumptions (income and expenses).",
           "additionalProperties": false,
-          "required": ["vacancy_pct", "credit_loss_pct", "inflation", "expenses"],
+          "required": ["fixed_annual"],
           "properties": {
-            "vacancy_pct": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 0.5,
-              "description": "Vacancy allowance (decimal)."
-            },
-            "credit_loss_pct": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 0.2,
-              "description": "Credit loss allowance (decimal)."
-            },
-            "inflation": {
+            "management_fee_pct_egi": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.0 },
+            "fixed_annual": {
               "type": "object",
-              "description": "Annual inflation assumptions used to grow cash flow line items (decimal).",
               "additionalProperties": false,
-              "required": ["rent", "expenses", "taxes"],
               "properties": {
-                "rent": {
-                  "type": "number",
-                  "minimum": -0.1,
-                  "maximum": 0.2,
-                  "description": "Annual rent growth rate (decimal)."
+                "taxes": { "type": "number", "minimum": 0, "default": 0 },
+                "insurance": { "type": "number", "minimum": 0, "default": 0 },
+                "cam": { "type": "number", "minimum": 0, "default": 0 },
+                "utilities": { "type": "number", "minimum": 0, "default": 0 },
+                "repairs_maintenance": { "type": "number", "minimum": 0, "default": 0 },
+                "admin": { "type": "number", "minimum": 0, "default": 0 },
+                "custom": {
+                  "type": "array",
+                  "items": { "$ref": "#/$defs/ExpenseLineV0" },
+                  "default": []
                 },
-                "expenses": {
-                  "type": "number",
-                  "minimum": -0.1,
-                  "maximum": 0.2,
-                  "description": "Annual operating expense growth rate (decimal)."
-                },
-                "taxes": {
-                  "type": "number",
-                  "minimum": -0.1,
-                  "maximum": 0.2,
-                  "description": "Annual property tax growth rate (decimal)."
-                },
-                "recoveries": {
-                  "type": "number",
-                  "minimum": -0.1,
-                  "maximum": 0.2,
-                  "description": "Annual recovery growth rate (decimal)."
-                }
-              }
-            },
-            "expenses": {
-              "type": "object",
-              "description": "Expense settings, including recoveries mode.",
-              "additionalProperties": false,
-              "required": ["recoveries"],
-              "properties": {
-                "recoveries": {
+                "reserves": {
                   "type": "object",
-                  "description": "Expense recovery settings.",
                   "additionalProperties": false,
-                  "required": ["mode"],
+                  "required": ["amount_year1", "growth_pct", "growth_mode"],
                   "properties": {
-                    "mode": {
-                      "type": "string",
-                      "enum": ["NNN", "MOD_GROSS", "GROSS"],
-                      "description": "Expense recovery mode."
-                    },
-                    "tax_recoverable": { "type": "boolean", "description": "Whether taxes are recoverable." },
-                    "insurance_recoverable": { "type": "boolean", "description": "Whether insurance is recoverable." },
-                    "cam_recoverable": { "type": "boolean", "description": "Whether CAM is recoverable." },
-                    "admin_fee_pct": {
-                      "type": "number",
-                      "minimum": 0,
-                      "maximum": 1,
-                      "description": "Admin fee applied to recoverable expenses (decimal)."
-                    },
-                    "caps": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "cam_annual_increase_cap": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 1,
-                          "description": "Annual cap on CAM recovery increases (decimal)."
-                        }
-                      }
-                    }
-                  }
-                },
-                "fixed_annual": {
-                  "type": "object",
-                  "description": "Fixed annual expense items.",
-                  "additionalProperties": false,
-                  "properties": {
-                    "reserves": { "type": "number", "minimum": 0, "description": "Year 1 reserves amount." },
-                    "reserves_growth_pct": {
-                      "type": "number",
-                      "description": "Annual growth rate for reserves (decimal)."
-                    }
+                    "amount_year1": { "type": "number", "minimum": 0 },
+                    "growth_pct": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "growth_mode": { "type": "string", "enum": ["annual_compound", "flat"] }
                   }
                 }
               }
+            }
+          }
+        }
+      }
+    },
+
+    "OtherIncomeLineV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "amount_annual": { "type": "number", "minimum": 0 },
+        "amount_monthly": { "type": "number", "minimum": 0 },
+        "growth_pct": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+
+    "ExpenseLineV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "amount_year1"],
+      "properties": {
+        "name": { "type": "string" },
+        "amount_year1": { "type": "number", "minimum": 0 },
+        "growth_pct": { "type": "number", "minimum": 0, "maximum": 1 },
+        "recoverable": { "type": "boolean", "default": false }
+      }
+    },
+
+    "CapexModuleV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "one_time_items": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/CapexItemV0" },
+          "default": []
+        }
+      }
+    },
+
+    "CapexItemV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "month", "amount", "category"],
+      "properties": {
+        "name": { "type": "string" },
+        "month": { "type": "integer", "minimum": 0 },
+        "amount": { "type": "number" },
+        "category": { "type": "string", "enum": ["capex", "ti", "lc", "leasing_commission", "carry_cost", "sitework", "equipment", "other"] }
+      }
+    },
+
+    "DevelopmentModuleV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "timeline": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "construction_start_month": { "type": "integer", "minimum": 0 },
+            "construction_months": { "type": "integer", "minimum": 0 },
+            "lease_up_start_month": { "type": "integer", "minimum": 0 },
+            "lease_up_months": { "type": "integer", "minimum": 0 },
+            "stabilization_month": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+
+    "DebtModuleV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["loans"],
+      "properties": {
+        "loans": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/LoanV0" },
+          "minItems": 0
+        },
+        "events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/DebtEventV0" },
+          "default": []
+        }
+      }
+    },
+
+    "LoanV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["loan_id", "enabled", "loan_type", "principal_mode", "rate", "term_months"],
+      "properties": {
+        "loan_id": { "type": "string" },
+        "enabled": { "type": "boolean" },
+        "loan_type": { "type": "string", "enum": ["acquisition", "construction", "refinance", "mezzanine"] },
+        "principal_mode": { "type": "string", "enum": ["explicit", "sized"] },
+        "principal_amount": { "type": "number", "minimum": 0 },
+        "sizing": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "method": { "type": "string", "enum": ["ltv_dscr", "dscr_only", "ltv_only"] },
+            "ltv_max": { "type": "number", "minimum": 0, "maximum": 1.0 },
+            "dscr_min": { "type": "number", "minimum": 0 },
+            "ltv_is_non_binding": { "type": "boolean", "default": false }
+          }
+        },
+        "rate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": { "type": "string", "enum": ["fixed", "floating"] },
+            "rate": { "type": "number", "minimum": 0, "maximum": 1 },
+            "index": { "type": "string" },
+            "spread": { "type": "number", "minimum": 0, "maximum": 1 }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "type": { "const": "fixed" } } },
+              "then": { "required": ["rate"] }
             },
-            "reserves_schedule": {
+            {
+              "if": { "properties": { "type": { "const": "floating" } } },
+              "then": { "required": ["index", "spread"] }
+            }
+          ]
+        },
+        "amort_years": { "type": "integer", "minimum": 0 },
+        "io_months": { "type": "integer", "minimum": 0, "default": 0 },
+        "term_months": { "type": "integer", "minimum": 1 },
+        "origination_fee_pct": { "type": "number", "minimum": 0, "maximum": 0.1, "default": 0.0 },
+        "interest_payment": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": { "type": "string", "enum": ["standard", "current_pay_plus_pik"] },
+            "current_pay_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+            "pik_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+            "pik_accrues_to_balance": { "type": "boolean", "default": false }
+          }
+        }
+      }
+    },
+
+    "DebtEventV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "month", "loan_id"],
+      "properties": {
+        "type": { "type": "string", "enum": ["origination", "refinance", "payoff"] },
+        "month": { "type": "integer", "minimum": 0 },
+        "loan_id": { "type": "string" },
+        "payoff_loan_id": { "type": "string" },
+        "costs_fixed": { "type": "number", "minimum": 0 },
+        "costs_pct_of_new_loan": { "type": "number", "minimum": 0, "maximum": 0.1 },
+        "distribute_cash_out": { "type": "boolean", "default": true }
+      }
+    },
+
+    "EquityWaterfallModuleV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parties", "contributions", "waterfall"],
+      "properties": {
+        "parties": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["party_id", "name", "role", "ownership_pct"],
+            "properties": {
+              "party_id": { "type": "string" },
+              "name": { "type": "string" },
+              "role": { "type": "string", "enum": ["lp", "gp", "partner"] },
+              "ownership_pct": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
+        "contributions": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "upfront_equity": { "type": "number", "minimum": 0 },
+            "capital_calls": {
               "type": "array",
-              "description": "Year-by-year reserve schedule.",
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["year", "amount"],
+                "required": ["month", "amount"],
                 "properties": {
-                  "year": { "type": "integer", "description": "Calendar year for reserves." },
-                  "amount": { "type": "number", "minimum": 0, "description": "Annual reserve amount." }
+                  "month": { "type": "integer", "minimum": 0 },
+                  "amount": { "type": "number", "minimum": 0 }
                 }
-              }
+              },
+              "default": []
             }
           }
         },
-
-        "debt": {
-          "type": "object",
-          "description": "Debt assumptions.",
-          "additionalProperties": false,
-          "required": ["acquisition_loan"],
-          "properties": {
-            "acquisition_loan": {
-              "type": "object",
-              "description": "Acquisition financing assumptions.",
-              "additionalProperties": false,
-              "required": ["ltv_max", "rate", "amort_years", "io_months", "term_months"],
-              "properties": {
-                "ltv_max": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 0.9,
-                  "description": "Maximum loan-to-value (decimal)."
-                },
-                "rate": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 0.25,
-                  "description": "Annual interest rate (decimal)."
-                },
-                "amort_years": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 40,
-                  "description": "Amortization term in years."
-                },
-                "io_months": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 120,
-                  "description": "Interest-only period in months."
-                },
-                "term_months": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 600,
-                  "description": "Loan term in months."
-                }
-              }
-            },
-            "sizing_mode": {
-              "type": "string",
-              "enum": ["ltv", "dscr", "explicit"],
-              "description": "Debt sizing mode."
-            },
-            "explicit_loan_amount": {
-              "type": "number",
-              "minimum": 0,
-              "description": "Explicit loan amount when sizing_mode=explicit."
-            },
-            "funding_month": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Month index when the loan funds (default: close_month)."
-            },
-            "covenants": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "min_dscr": {
-                  "type": "number",
-                  "minimum": 0,
-                  "description": "Minimum DSCR covenant."
-                },
-                "cash_sweep_trigger_dscr": {
-                  "type": "number",
-                  "minimum": 0,
-                  "description": "DSCR threshold triggering cash sweep."
-                }
-              }
-            }
-          }
-        },
-
-        "exit": {
-          "type": "object",
-          "description": "Exit/sale assumptions.",
-          "additionalProperties": false,
-          "required": ["exit_cap_rate", "exit_month", "sale_cost_pct"],
-          "properties": {
-            "exit_cap_rate": {
-              "type": "number",
-              "minimum": 0.01,
-              "maximum": 0.2,
-              "description": "Exit cap rate (decimal)."
-            },
-            "exit_month": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 600,
-              "description": "Disposition month (1 = end of month 1)."
-            },
-            "sale_cost_pct": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 0.1,
-              "description": "Sale transaction costs as a percent of gross sale price (decimal)."
-            },
-            "forward_noi_months": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 24,
-              "default": 12,
-              "description": "Forward NOI months used for exit valuation (e.g., 12 for forward-12 NOI)."
-            }
-          }
-        },
-
-        "returns": {
-          "type": "object",
-          "description": "Return assumptions (discount rates).",
-          "additionalProperties": false,
-          "properties": {
-            "discount_rate_unlevered": {
-              "type": "number",
-              "description": "Unlevered discount rate for NPV (decimal)."
-            },
-            "discount_rate_levered": {
-              "type": "number",
-              "description": "Levered discount rate for NPV (decimal)."
-            }
-          }
-        },
-
         "waterfall": {
           "type": "object",
-          "description": "Equity waterfall / promote assumptions.",
           "additionalProperties": false,
-          "required": ["enabled"],
+          "required": ["style", "tiers"],
           "properties": {
-            "enabled": { "type": "boolean", "default": false, "description": "Whether to apply a promote waterfall." },
-            "structure": {
-              "type": "string",
-              "enum": ["pro_rata", "tiered"],
-              "description": "Waterfall structure type."
-            },
-            "lp_classes": {
-              "type": "array",
-              "description": "Optional LP class definitions for tiered structures.",
-              "maxItems": 8,
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["class_id", "equity_pct"],
-                "properties": {
-                  "class_id": { "type": "string", "minLength": 1, "description": "LP class identifier." },
-                  "equity_pct": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
-                    "description": "Equity share for this class."
-                  },
-                  "pref_irr": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
-                    "description": "Preferred return IRR for the class."
-                  },
-                  "promote_split": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
-                    "description": "Promote split for the class."
-                  },
-                  "catch_up_pct": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
-                    "description": "Catch-up percentage for the class."
-                  }
-                }
-              }
-            },
+            "style": { "type": "string", "enum": ["european"] },
             "tiers": {
               "type": "array",
-              "description": "Waterfall tiers, in ascending order of hurdles.",
-              "minItems": 1,
-              "maxItems": 8,
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["hurdle_irr"],
-                "properties": {
-                  "hurdle_irr": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
-                    "description": "Tier hurdle IRR (decimal)."
-                  },
-                  "promote_split": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
-                    "description": "Promote split (decimal; e.g., 0.2 for 20% promote)."
-                  },
-                  "lp_split": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
-                    "description": "LP split for the tier."
-                  },
-                  "gp_split": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
-                    "description": "GP split for the tier."
-                  },
-                  "catch_up_pct": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
-                    "description": "Catch-up percentage for the tier."
+              "items": { "$ref": "#/$defs/WaterfallTierV0" }
+            }
+          }
+        }
+      }
+    },
+
+    "WaterfallTierV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "split"],
+      "properties": {
+        "type": { "type": "string", "enum": ["return_of_capital", "preferred_return", "catch_up", "irr_hurdle_split", "residual_split"] },
+        "rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "hurdle_irr": { "type": "number", "minimum": 0, "maximum": 1 },
+        "split": {
+          "type": "object",
+          "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+
+    "ExitModuleV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exit_month", "exit_cap_rate", "sale_cost_pct", "forward_noi_months"],
+      "properties": {
+        "exit_month": { "type": "integer", "minimum": 0 },
+        "exit_cap_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "sale_cost_pct": { "type": "number", "minimum": 0, "maximum": 0.1 },
+        "forward_noi_months": { "type": "integer", "minimum": 1, "maximum": 24 }
+      }
+    },
+
+    "ScenarioRunnerV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "grids": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "axes"],
+            "properties": {
+              "name": { "type": "string" },
+              "axes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["path", "values"],
+                  "properties": {
+                    "path": { "type": "string" },
+                    "values": { "type": "array", "items": { "type": "number" } }
                   }
                 }
               }
             }
           },
-          "allOf": [
-            {
-              "if": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["enabled"],
-                "properties": { "enabled": { "const": true }, "tiers": {} }
-              },
-              "then": { "required": ["tiers"] }
-            }
-          ]
-        },
+          "default": []
+        }
+      }
+    },
 
-        "scenario": {
+    "PortfolioModuleV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assets"],
+      "properties": {
+        "assets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["asset_id", "request"],
+            "properties": {
+              "asset_id": { "type": "string" },
+              "request": { "type": "object" },
+              "weight": { "type": "number", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+
+    "FundModuleV0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "fund_terms", "fees"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "fund_terms": {
           "type": "object",
-          "description": "Scenario settings (basic sensitivity ranges).",
           "additionalProperties": false,
-          "required": ["enabled"],
+          "required": ["commitment_total", "investment_period_months", "fund_term_months"],
           "properties": {
-            "enabled": { "type": "boolean", "default": false, "description": "Whether to run scenario ranges." },
-            "exit_cap_range": {
-              "type": "object",
-              "description": "Exit cap rate range definition.",
-              "additionalProperties": false,
-              "required": ["low", "high", "step"],
-              "properties": {
-                "low": { "type": "number", "minimum": 0.01, "maximum": 0.25, "description": "Low exit cap rate (decimal)." },
-                "high": { "type": "number", "minimum": 0.01, "maximum": 0.25, "description": "High exit cap rate (decimal)." },
-                "step": { "type": "number", "minimum": 0.0001, "maximum": 0.05, "description": "Step size for exit cap rate (decimal)." }
-              }
-            },
-            "exit_month_range": {
-              "type": "object",
-              "description": "Exit month range definition.",
-              "additionalProperties": false,
-              "required": ["low", "high", "step"],
-              "properties": {
-                "low": { "type": "integer", "minimum": 1, "maximum": 600, "description": "Low exit month." },
-                "high": { "type": "integer", "minimum": 1, "maximum": 600, "description": "High exit month." },
-                "step": { "type": "integer", "minimum": 1, "maximum": 60, "description": "Step size for exit month." }
-              }
-            },
-            "interest_rate_range": {
-              "type": "object",
-              "description": "Interest rate range definition.",
-              "additionalProperties": false,
-              "required": ["low", "high", "step"],
-              "properties": {
-                "low": { "type": "number", "minimum": 0, "maximum": 0.5, "description": "Low interest rate (decimal)." },
-                "high": { "type": "number", "minimum": 0, "maximum": 0.5, "description": "High interest rate (decimal)." },
-                "step": { "type": "number", "minimum": 0.0001, "maximum": 0.05, "description": "Step size for interest rate (decimal)." }
-              }
-            }
-          },
-          "allOf": [
-            {
-              "if": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["enabled"],
-                "properties": {
-                  "enabled": { "const": true },
-                  "exit_cap_range": {},
-                  "exit_month_range": {},
-                  "interest_rate_range": {}
-                }
-              },
-              "then": { "required": ["exit_cap_range", "exit_month_range", "interest_rate_range"] }
-            }
-          ]
+            "commitment_total": { "type": "number", "minimum": 0 },
+            "investment_period_months": { "type": "integer", "minimum": 1 },
+            "fund_term_months": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "fees": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "management_fee_pct_invested_capital": { "type": "number", "minimum": 0, "maximum": 0.05 },
+            "acquisition_fee_pct": { "type": "number", "minimum": 0, "maximum": 0.05 }
+          }
         }
       }
     }

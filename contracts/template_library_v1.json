@@ -1,0 +1,123 @@
+{
+  "version": "template_library_v1",
+  "contract_version": "DEAL_ENGINE_V0",
+  "templates": [
+    {
+      "template_id": "RETAIL_DEV_NEIGHBORHOOD_CENTER_V1",
+      "display_name": "Retail – Neighborhood Center Development / Lease-Up",
+      "asset_class": "retail",
+      "strategy": "development_leaseup",
+      "time_step": "monthly",
+      "required_modules": ["lease", "operating", "capex", "development", "debt", "equity", "exit", "scenario"],
+      "notes": ["construction draws", "pref + IRR hurdle promote tiers", "multi-tenant rent roll"]
+    },
+    {
+      "template_id": "IOS_ACQ_STABILIZED_YARD_V1",
+      "display_name": "IOS – Stabilized Yard Acquisition",
+      "asset_class": "ios",
+      "strategy": "acquisition_stabilized",
+      "time_step": "monthly",
+      "required_modules": ["lease", "operating", "debt", "equity", "exit", "scenario"],
+      "notes": ["acres supported", "shorter leases common"]
+    },
+    {
+      "template_id": "MHP_ACQ_STABILIZED_VALUEADD_V1",
+      "display_name": "MHP – Stabilized Acquisition (Lot Rent + POH Optional)",
+      "asset_class": "mhp",
+      "strategy": "acquisition_valueadd_light",
+      "time_step": "monthly",
+      "required_modules": ["lease", "operating", "debt", "equity", "exit", "scenario"],
+      "notes": ["lot rent model", "utility billbacks optional", "pref + split waterfall"]
+    },
+    {
+      "template_id": "RV_BOAT_STORAGE_PORTFOLIO_V1",
+      "display_name": "Storage – Boat/RV Storage Portfolio Acquisition + Ops Value-Add",
+      "asset_class": "storage",
+      "strategy": "portfolio_acquisition_valueadd",
+      "time_step": "monthly",
+      "required_modules": ["portfolio", "lease", "operating", "capex", "debt", "equity", "exit", "scenario"],
+      "notes": ["unit mix occupancy ramp", "portfolio aggregation"]
+    },
+    {
+      "template_id": "IND_MULTI_TENANT_VALUEADD_V1",
+      "display_name": "Industrial – Multi-Tenant Value-Add Acquisition",
+      "asset_class": "industrial",
+      "strategy": "acquisition_valueadd",
+      "time_step": "monthly",
+      "required_modules": ["lease", "operating", "capex", "debt", "equity", "exit", "scenario"],
+      "notes": ["rent roll + rollover downtime + TI/LC"]
+    },
+    {
+      "template_id": "IND_PORTFOLIO_CORE_RECAP_V1",
+      "display_name": "Industrial – Multi-Asset Core/Core+ Recapitalization",
+      "asset_class": "industrial",
+      "strategy": "portfolio_core_recap",
+      "time_step": "annual",
+      "required_modules": ["portfolio", "lease", "operating", "debt", "equity", "ex", "scenario"],
+      "notes": ["per-asset loans optional", "conservative leverage", "quarterly distributions common"]
+    },
+    {
+      "template_id": "MF_DEV_QOZ_GROUNDUP_V1",
+      "display_name": "Multifamily – Ground-Up Development (QOZ Hold Profile)",
+      "asset_class": "multifamily",
+      "strategy": "development_qoz",
+      "time_step": "monthly",
+      "required_modules": ["lease", "operating", "development", "debt", "equity", "exit", "scenario"],
+      "notes": ["unit mix + lease-up", "10-year hold"]
+    },
+    {
+      "template_id": "IOS_FUND_CLOSED_END_V1",
+      "display_name": "Fund – IOS Closed-End Fund (Commitments + Fees + Catch-Up Carry)",
+      "asset_class": "fund",
+      "strategy": "fund_closed_end",
+      "time_step": "quarterly",
+      "required_modules": ["fund", "portfolio", "equity", "scenario"],
+      "notes": ["8% pref", "20% carry with 50/50 catch-up", "1.5% mgmt fee on invested capital"]
+    },
+    {
+      "template_id": "TRUCK_TERMINAL_SALE_LEASEBACK_AND_LAND_LEASEUP_V1",
+      "display_name": "Truck Terminal – Sale-Leaseback + Phased Land Lease-Up",
+      "asset_class": "ios",
+      "strategy": "hybrid_stabilized_plus_leaseup",
+      "time_step": "monthly",
+      "required_modules": ["lease", "operating", "capex", "debt", "equity", "exit", "scenario"],
+      "notes": ["sale-leaseback tranche + future lease-up tranche", "refinance after stabilization"]
+    },
+    {
+      "template_id": "MF_DEV_MERCHANT_BUILD_V1",
+      "display_name": "Multifamily – Merchant Build (Develop + Stabilize + Sell)",
+      "asset_class": "multifamily",
+      "strategy": "development_merchant_build",
+      "time_step": "nthly",
+      "required_modules": ["lease", "operating", "development", "debt", "equity", "exit", "scenario"],
+      "notes": ["sale at stabilization", "development timeline + draws"]
+    },
+    {
+      "template_id": "RETAIL_PORTFOLIO_SIDECAR_VALUEADD_V1",
+      "display_name": "Retail – Multi-Asset Sidecar Value-Add",
+      "asset_class": "retail",
+      "strategy": "portfolio_valueadd_sidecar",
+      "time_step": "monthly",
+      "required_modules": ["portfolio", "lease", "operating", "capex", "debt", "equity", "exit", "scenario"],
+      "notes": ["CAM recoveries/stops/caps", "lease-up of vacancies", "optional refi"]
+    },
+    {
+      "template_id": "IOS_TRUCK_PARK_EXPANSION_VALUEADD_V1",
+      "display_name": "IOS/Truck Parking – Acquisition + Expansion Build-Out",
+      "asset_class": "ios",
+      "strategy": "acquisition_valueadd_expansion",
+      "time_step": "monthly",
+      "required_modules": ["lease", "operating", "capex", "development", "debt", "equity", "exit", "scenario"],
+      "notes": ["expansion capex + new income start", "acres-based revenue", "refi optional"]
+    },
+    {
+      "template_id": "IND_PORTFOLIO_ACQ_REFI_EXIT_V1",
+      "display_name": "Industrial – Portfolio Acquisition + Mid-Hold Refinance + Exit",
+      "asset_class": "industrial",
+      "strategy": "portfolio_acquisition_refi",
+      "time_step": "monthly",
+      "required_modules": ["portfolio", "lease", "operating", "capex", "debt", "equity", "exit", "scenario"],
+      "notes": ["refi event", "IO debt common", "mark-to-market rollover"]
+    }
+  ]
+}
