@@ -10,16 +10,16 @@ export interface ValidationError {
   message: string;
 }
 
-export interface ModuleResult {
+export interface ModuleResult<T = Record<string, unknown>> {
   success: boolean;
-  outputs?: Record<string, unknown>;
+  outputs?: T;
   errors?: string[];
 }
 
-export interface Module {
+export interface Module<T = unknown> {
   name: string;
   version: string;
   dependencies: readonly string[];
   validate(inputs: unknown): ValidationResult;
-  compute(context: DealContext): ModuleResult;
+  compute(context: DealContext): ModuleResult<T>;
 }
