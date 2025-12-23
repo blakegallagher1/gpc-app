@@ -143,11 +143,15 @@ run_test_case() {
   log_pass "[$CASE_NAME] Job completed successfully"
 
   # Extract outputs using Python to create proper bash variable assignments
+  # Outputs can be in _meta.full_outputs or structuredContent.outputs
   eval "$(echo "$STATUS_RESP" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
-sc = d.get('result',{}).get('structuredContent',{})
-outputs = sc.get('outputs', {})
+result = d.get('result', {})
+# Try _meta.full_outputs first (new format), then structuredContent.outputs (old format)
+outputs = result.get('_meta', {}).get('full_outputs', {})
+if not outputs:
+    outputs = result.get('structuredContent', {}).get('outputs', {})
 for k, v in outputs.items():
     # Convert dots to underscores only in the key name
     safe_key = 'OUT_' + k.replace('.', '_')
