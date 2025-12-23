@@ -1,0 +1,28 @@
+{
+  "name": "FedEx Dallas NL-Only Regression",
+  "description": "ChatGPT NL-only call regression test - should NOT require inputs parameter",
+  "prompt": "Build me an acquisition model for a 75,000 SF industrial warehouse in Dallas, TX. Purchase price is $8.5M at a 6.25% going-in cap. Financing is 70% LTV at 6.0% fixed rate, 25-year amortization with 12 months IO. Single tenant (FedEx) paying $8.75 PSF NNN with 3% annual escalations, lease runs through December 2029. Plan to hold 5 years and exit at a 6.75% cap.",
+  "expected_status": "ok",
+  "expected_extracted_fields": [
+    "deal.city",
+    "deal.state",
+    "deal.gross_sf",
+    "deal.net_sf",
+    "acquisition.purchase_price",
+    "debt.acquisition_loan.ltv_max",
+    "debt.acquisition_loan.rate.fixed_rate",
+    "rent_roll.tenants_in_place",
+    "exit.exit_cap_rate"
+  ],
+  "expected_values": {
+    "deal.city": "Dallas",
+    "deal.state": "TX",
+    "deal.gross_sf": 75000,
+    "deal.net_sf": 75000,
+    "acquisition.purchase_price": 8500000,
+    "debt.acquisition_loan.ltv_max": 0.7,
+    "debt.acquisition_loan.rate.fixed_rate": 0.06,
+    "exit.exit_cap_rate": 0.0675
+  },
+  "notes": "This test verifies NL-only calls (no inputs parameter) work correctly. Introduced after ChatGPT was calling validate_inputs instead of build_model."
+}

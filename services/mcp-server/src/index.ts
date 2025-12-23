@@ -290,12 +290,12 @@ function createIndAcqServer() {
     })
   );
 
-  // Tool 1: validate_inputs
+  // Tool 1: validate_inputs (widget-only, hidden from model selection)
   server.registerTool(
     "ind_acq.validate_inputs",
     {
-      title: "Validate IND_ACQ inputs",
-      description: "Validates inputs for the IND_ACQ underwriting model.",
+      title: "Validate Model Inputs (Widget Internal)",
+      description: "Internal validation endpoint for the widget UI. Not for direct model use - use build_model instead for all deal requests.",
       inputSchema: validateInputsInputSchema,
       annotations: {
         readOnlyHint: true,
@@ -306,6 +306,7 @@ function createIndAcqServer() {
       _meta: {
         json_schema: toolInputJsonSchemas.validate_inputs,
         securitySchemes: [{ type: "noauth" }],
+        "openai/visibility": "private",
         "openai/outputTemplate": "ui://widget/ind-acq",
         "openai/widgetAccessible": true,
         "openai/toolInvocation/invoking": "Validating underwriting inputs...",
@@ -318,12 +319,12 @@ function createIndAcqServer() {
     }
   );
 
-  // Tool 2: build_model (with NL extraction support)
+  // Tool 2: build_model (NL-first with structured fallback)
   server.registerTool(
     "ind_acq.build_model",
     {
-      title: "Build IND_ACQ model",
-      description: "Builds the IND_ACQ underwriting model. Supports natural language extraction via natural_language parameter.",
+      title: "Build Industrial Acquisition Model",
+      description: "Build a commercial real estate acquisition model. Use this when a user describes a deal - provide their description in the 'natural_language' parameter and the system will extract inputs and build the model. Accepts natural language deal descriptions OR structured inputs. For natural language, provide only 'natural_language' (no 'inputs' needed).",
       inputSchema: buildModelInputSchema,
       annotations: {
         readOnlyHint: false,
@@ -341,12 +342,19 @@ function createIndAcqServer() {
       },
     },
     async (args) => {
-      const mode = args.mode ?? "run";
       const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       let mergedInputs = (args.inputs ?? {}) as Record<string, unknown>;
       let extractionMeta: ExtractionMeta | undefined;
 
-      log.info("build_model called", { requestId, mode, hasNL: !!args.natural_language, hasInputs: !!args.inputs });
+      // Check if this is an NL-only call (natural_language present, inputs missing/empty)
+      const hasNL = args.natural_language && typeof args.natural_language === "string" && args.natural_language.trim();
+      const hasInputs = args.inputs && Object.keys(args.inputs).length > 0;
+
+      // Default to extract_only for NL-only calls (no inputs), run otherwise
+      // This prevents accidental runs without all required inputs
+      const mode = args.mode ?? (hasNL && !hasInputs ? "extract_only" : "run");
+
+      log.info("build_model called", { requestId, mode, hasNL: !!hasNL, hasInputs: !!hasInputs });
 
       // If natural_language is provided, extract inputs first
       if (args.natural_language && typeof args.natural_language === "string" && args.natural_language.trim()) {

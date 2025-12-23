@@ -369,6 +369,86 @@ except:
 fi
 
 # ============================================================================
+# Test 5: FedEx Dallas - ChatGPT NL-only regression test
+# ============================================================================
+echo ""
+echo ">>> Test 5: FedEx Dallas (NL-only call, no inputs)"
+PROMPT5="Build me an acquisition model for a 75,000 SF industrial warehouse in Dallas, TX. Purchase price is \$8.5M at a 6.25% going-in cap. Financing is 70% LTV at 6.0% fixed rate, 25-year amortization with 12 months IO. Single tenant (FedEx) paying \$8.75 PSF NNN with 3% annual escalations, lease runs through December 2029. Plan to hold 5 years and exit at a 6.75% cap."
+
+ESCAPED_PROMPT5=$(echo "$PROMPT5" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
+# NL-only call - no inputs parameter, should default to extract_only mode
+RESPONSE5=$(call_tool_with_retry "ind_acq.build_model" "{\"natural_language\":$ESCAPED_PROMPT5}")
+
+if [ -z "$RESPONSE5" ]; then
+  log_fail "Test 5: No response from server (HTTP $LAST_HTTP_STATUS)"
+else
+  STATUS5=$(get_field "$RESPONSE5" "result.structuredContent.status")
+  INPUTS5=$(get_field "$RESPONSE5" "result.structuredContent.inputs")
+  log_info "Status: $STATUS5"
+
+  # NL-only calls should return ok or needs_info, never "invalid"
+  if [ "$STATUS5" = "ok" ] || [ "$STATUS5" = "needs_info" ]; then
+    log_pass "FedEx NL-only call succeeded (status=$STATUS5)"
+
+    # Validate key extracted fields
+    PURCHASE_PRICE=$(echo "$INPUTS5" | python3 -c "
+import sys, json
+try:
+    inputs = json.load(sys.stdin)
+    price = inputs.get('acquisition', {}).get('purchase_price')
+    print(price if price else 0)
+except:
+    print(0)
+" 2>/dev/null || echo "0")
+
+    if [ "$PURCHASE_PRICE" = "8500000" ]; then
+      log_pass "Extracted correct purchase_price: \$8.5M"
+    else
+      log_info "Purchase price extracted: $PURCHASE_PRICE (expected 8500000)"
+    fi
+
+    GROSS_SF=$(echo "$INPUTS5" | python3 -c "
+import sys, json
+try:
+    inputs = json.load(sys.stdin)
+    sf = inputs.get('deal', {}).get('gross_sf')
+    print(sf if sf else 0)
+except:
+    print(0)
+" 2>/dev/null || echo "0")
+
+    if [ "$GROSS_SF" = "75000" ]; then
+      log_pass "Extracted correct gross_sf: 75,000"
+    else
+      log_info "Gross SF extracted: $GROSS_SF (expected 75000)"
+    fi
+
+    LTV=$(echo "$INPUTS5" | python3 -c "
+import sys, json
+try:
+    inputs = json.load(sys.stdin)
+    ltv = inputs.get('debt', {}).get('acquisition_loan', {}).get('ltv_max')
+    print(ltv if ltv else 0)
+except:
+    print(0)
+" 2>/dev/null || echo "0")
+
+    if [ "$LTV" = "0.7" ]; then
+      log_pass "Extracted correct ltv_max: 70%"
+    else
+      log_info "LTV extracted: $LTV (expected 0.7)"
+    fi
+  elif [ "$STATUS5" = "invalid" ]; then
+    # This is the failure case we're testing for - NL-only should NOT return invalid
+    log_fail "NL-only call returned status=invalid (should be ok or needs_info)"
+    ERRORS5=$(get_field "$RESPONSE5" "result.structuredContent.errors")
+    log_info "Errors: ${ERRORS5:0:200}"
+  else
+    log_fail "Unexpected status: $STATUS5"
+  fi
+fi
+
+# ============================================================================
 # Summary
 # ============================================================================
 echo ""
