@@ -29,13 +29,19 @@
       "operating.expenses.fixed_annual.security": "Assumptions!$P$25",
       "operating.expenses.fixed_annual.property_taxes": "Assumptions!$P$27",
       "operating.expenses.fixed_annual.other_expense_1": "Assumptions!$P$28",
-      "operating.expenses.capex_reserves_per_nsf_annual": "Assumptions!$P$33",
+      "operating.expenses.fixed_annual.other_operating": "Assumptions!$P$26",
+      "operating.expenses.fixed_annual.reserves": "Assumptions!$P$34",
+      "operating.expenses.capex_reserves_per_nsf_annual": "Assumptions!$P$34",
 
       "debt.acquisition_loan.ltv_max": "debt_acq_ltv_max",
       "debt.acquisition_loan.amort_years": "debt_acq_amort_years",
       "debt.acquisition_loan.io_months": "debt_acq_io_months",
       "debt.acquisition_loan.origination_fee_pct": "debt_acq_orig_fee_pct",
       "debt.acquisition_loan.rate.fixed_rate": "debt_acq_fixed_rate_or_spread",
+      "debt.acquisition_loan.funding.fund_renovation_pct": "debt_acq_fund_reno_pct",
+      "debt.acquisition_loan.funding.fund_ti_lc_pct": "debt_acq_fund_ti_lc_pct",
+      "debt.acquisition_loan.funding.fund_capex_pct": "debt_acq_fund_capex_pct",
+      "debt.acquisition_loan.funding.ti_lc_holdback_amount": "Assumptions!$Z$15",
 
       "exit.exit_cap_rate": "exit_cap_rate",
       "exit.sale_cost_pct": "exit_sale_cost_pct"

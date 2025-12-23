@@ -473,12 +473,40 @@ static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, 
 
         using var package = new ExcelPackage(new FileInfo(templatePath));
 
+        var netSf = TryGetNumericByPath(request.Inputs, "deal.net_sf")
+            ?? TryGetNumericByPath(request.Inputs, "deal.gross_sf");
+        var hasReservesTotal = HasNumericValueAtPath(request.Inputs, "operating.expenses.fixed_annual.reserves");
+        var otherOpGrowth = TryGetNumericByPath(request.Inputs, "operating.expenses.fixed_annual.other_operating_growth_pct");
+        var reservesGrowth = TryGetNumericByPath(request.Inputs, "operating.expenses.fixed_annual.reserves_growth_pct");
+
         foreach (var spec in EnumerateNamedRanges(namedRangesElement))
         {
             // Skip if input path doesn't exist (optional mapping)
             if (!TryGetScalarValueByPath(request.Inputs, spec.Path, out var value))
             {
                 continue;
+            }
+
+            if (spec.Path == "operating.expenses.capex_reserves_per_nsf_annual" && hasReservesTotal)
+            {
+                continue;
+            }
+
+            if (spec.Path == "operating.expenses.fixed_annual.reserves")
+            {
+                if (TryConvertToDouble(value, out var reservesTotal) && netSf.HasValue && netSf.Value > 0)
+                {
+                    value = reservesTotal / netSf.Value;
+                }
+            }
+
+            if (spec.Path == "operating.inflation.expenses")
+            {
+                var overrideGrowth = otherOpGrowth ?? reservesGrowth;
+                if (overrideGrowth.HasValue)
+                {
+                    value = overrideGrowth.Value;
+                }
             }
 
             try
@@ -896,6 +924,63 @@ static bool TryGetScalarValueByPath(JsonElement root, string path, out object? v
     return true;
 }
 
+static double? TryGetNumericByPath(JsonElement root, string path)
+{
+    if (!TryResolvePath(root, path, out var element))
+    {
+        return null;
+    }
+
+    if (element.ValueKind == JsonValueKind.Number)
+    {
+        return element.TryGetDouble(out var num) ? num : null;
+    }
+
+    if (element.ValueKind == JsonValueKind.String &&
+        double.TryParse(element.GetString(), out var parsed))
+    {
+        return parsed;
+    }
+
+    return null;
+}
+
+static bool HasNumericValueAtPath(JsonElement root, string path)
+{
+    return TryGetNumericByPath(root, path).HasValue;
+}
+
+static bool TryConvertToDouble(object? value, out double number)
+{
+    switch (value)
+    {
+        case null:
+            number = 0;
+            return false;
+        case double d:
+            number = d;
+            return true;
+        case float f:
+            number = f;
+            return true;
+        case decimal m:
+            number = (double)m;
+            return true;
+        case int i:
+            number = i;
+            return true;
+        case long l:
+            number = l;
+            return true;
+        case string s when double.TryParse(s, out var parsed):
+            number = parsed;
+            return true;
+        default:
+            number = 0;
+            return false;
+    }
+}
+
 static bool TryResolvePath(JsonElement root, string path, out JsonElement element)
 {
     element = default;
@@ -1152,6 +1237,15 @@ static void WriteRentRollTable(
         }
 
         WriteTableRow(table, rowIndex, rowElement, columnMapping);
+
+        if (string.Equals(tableName, "tbl_rentroll_in_place", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(tableName, "tbl_rentroll_market", StringComparison.OrdinalIgnoreCase))
+        {
+            var worksheet = tableRange.Worksheet;
+            var targetRow = tableRange.Start.Row + 1 + rowIndex;
+            worksheet.Cells[targetRow, 12].Value = 0; // Tenant Improvements (L)
+            worksheet.Cells[targetRow, 14].Value = 0; // Leasing Commissions (N)
+        }
     }
 
     emptyDoc?.Dispose();
