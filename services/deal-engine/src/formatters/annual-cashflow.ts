@@ -233,13 +233,38 @@ export function generateAnnualCashFlow(inputs: AnnualCashFlowInputs): AnnualCash
     isHeader: true,
   });
 
-  // Expense breakdown (estimated splits)
-  const totalOpexAnnual = annualOpex.map((v) => Math.max(v, 0));
-  const reTaxes = totalOpexAnnual.map((v) => v * 0.40);
-  const insurance = totalOpexAnnual.map((v) => v * 0.10);
-  const rmCam = totalOpexAnnual.map((v) => v * 0.25);
-  const utilities = totalOpexAnnual.map((v) => v * 0.05);
-  const propertyMgmt = totalOpexAnnual.map((v) => v * 0.05);
+  // Check if we have granular expense series
+  const hasGranularExpenses = series.expense_real_estate_taxes && series.expense_real_estate_taxes.length > 0;
+
+  let reTaxes: number[];
+  let insurance: number[];
+  let rmCam: number[];
+  let utilities: number[];
+  let propertyMgmt: number[];
+  let totalOpexAnnual: number[];
+
+  if (hasGranularExpenses) {
+    // Use actual granular expense series
+    reTaxes = monthlyToAnnual(series.expense_real_estate_taxes ?? []);
+    insurance = monthlyToAnnual(series.expense_insurance ?? []);
+    rmCam = monthlyToAnnual(series.expense_cam_rm ?? []);
+    utilities = monthlyToAnnual(series.expense_utilities ?? []);
+    propertyMgmt = monthlyToAnnual(series.expense_management ?? []);
+    // Calculate total from components
+    totalOpexAnnual = reTaxes.map((v, i) =>
+      v + (insurance[i] ?? 0) + (rmCam[i] ?? 0) + (utilities[i] ?? 0) + (propertyMgmt[i] ?? 0) +
+      (monthlyToAnnual(series.expense_admin ?? [])[i] ?? 0) +
+      (monthlyToAnnual(series.expense_reserves ?? [])[i] ?? 0)
+    );
+  } else {
+    // Fallback to estimated splits from total opex
+    totalOpexAnnual = annualOpex.map((v) => Math.max(v, 0));
+    reTaxes = totalOpexAnnual.map((v) => v * 0.40);
+    insurance = totalOpexAnnual.map((v) => v * 0.10);
+    rmCam = totalOpexAnnual.map((v) => v * 0.25);
+    utilities = totalOpexAnnual.map((v) => v * 0.05);
+    propertyMgmt = totalOpexAnnual.map((v) => v * 0.05);
+  }
 
   // PSF values for expense headers
   const reTaxesPsf = reTaxes[0] ? reTaxes[0] / netSf : 0;
@@ -277,7 +302,7 @@ export function generateAnnualCashFlow(inputs: AnnualCashFlowInputs): AnnualCash
 
   rows.push({
     label: `Property Management`,
-    values: ["1.5% of EGI", ...propertyMgmt.slice(0, numYears)],
+    values: [hasGranularExpenses ? null : "1.5% of EGI", ...propertyMgmt.slice(0, numYears)],
     format: "currency",
     indent: 1,
   });

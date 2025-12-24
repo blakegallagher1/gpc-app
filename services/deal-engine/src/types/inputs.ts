@@ -119,6 +119,26 @@ export interface OperatingRecoveriesInput {
   };
 }
 
+export interface ExpenseLineItem {
+  amount_year1: number;
+  growth_pct?: number;
+  recoverable?: boolean;
+}
+
+export interface GranularExpensesInput {
+  // Property-level expenses
+  real_estate_taxes?: ExpenseLineItem;
+  insurance?: ExpenseLineItem;
+  cam_rm?: ExpenseLineItem;  // CAM / Repairs & Maintenance
+  utilities?: ExpenseLineItem;
+  management_fee?: ExpenseLineItem | { pct_of_egi: number };
+  admin_general?: ExpenseLineItem;
+  marketing?: ExpenseLineItem;
+  payroll?: ExpenseLineItem;
+  reserves?: ExpenseLineItem;
+  other?: ExpenseLineItem[];
+}
+
 export interface FixedAnnualExpenses {
   reserves?: number;
   reserves_growth_pct?: number;
@@ -127,6 +147,7 @@ export interface FixedAnnualExpenses {
 export interface OperatingExpensesInput {
   recoveries: OperatingRecoveriesInput;
   fixed_annual?: FixedAnnualExpenses;
+  granular?: GranularExpensesInput;
 }
 
 export interface OperatingReserveScheduleInput {
@@ -150,8 +171,42 @@ export interface AcquisitionLoanInput {
   term_months: number;
 }
 
+export type DebtTrancheType = "senior" | "mezz" | "pref_equity";
+
+export interface DebtTrancheInput {
+  tranche_id: string;
+  tranche_type: DebtTrancheType;
+  enabled?: boolean;
+  // Sizing
+  sizing_mode?: "ltv" | "ltc" | "dscr" | "explicit";
+  ltv_max?: number;           // For senior: % of value
+  ltc_max?: number;           // % of total cost
+  explicit_amount?: number;   // Explicit loan amount
+  // Terms
+  rate: number;               // Annual interest rate
+  rate_type?: "fixed" | "floating";
+  spread_over_index?: number; // For floating rate
+  amort_years?: number;       // 0 or undefined = interest only
+  io_months?: number;         // Interest only period
+  term_months: number;
+  // Fees
+  origination_fee_pct?: number;
+  exit_fee_pct?: number;
+  // Mezz/Pref specific
+  pik_rate?: number;          // Payment-in-kind interest (added to balance)
+  current_pay_rate?: number;  // Cash pay portion
+  // Timing
+  funding_month?: number;
+  // Covenants
+  min_dscr?: number;
+  cash_sweep_trigger_dscr?: number;
+}
+
 export interface DebtInput {
-  acquisition_loan: AcquisitionLoanInput;
+  // Legacy single loan (backwards compatible)
+  acquisition_loan?: AcquisitionLoanInput;
+  // Multi-tranche structure
+  tranches?: DebtTrancheInput[];
   sizing_mode?: "ltv" | "dscr" | "explicit";
   explicit_loan_amount?: number;
   funding_month?: number;
