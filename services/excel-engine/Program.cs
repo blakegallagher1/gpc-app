@@ -569,6 +569,13 @@ static async Task RunJobAsync(string jobId, JobState job, BuildRequest request, 
             {
                 renovationSheet.Cells[row, 3].Value = 0;  // Column C = cost
             }
+
+            // CRITICAL: Clear TI/LC/CapEx during acquisition loan (rows 40-42, column B)
+            // Template has hardcoded values that massively inflate costs for stabilized deals
+            // These should be calculated from rent roll, or zero if no TI/LC specified
+            renovationSheet.Cells[40, 2].Value = 0;  // TI during Acquisition Loan
+            renovationSheet.Cells[41, 2].Value = 0;  // LC during Acquisition Loan
+            renovationSheet.Cells[42, 2].Value = 0;  // CapEx during Acquisition Loan
         }
 
         // Fix: The template has hardcoded Forward 12-month NOI (F30) which should be a formula
