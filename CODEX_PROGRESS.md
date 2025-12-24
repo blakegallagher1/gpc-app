@@ -8,7 +8,17 @@ This file tracks all pending work items for the GPC App platform. Codex should u
 **Summary (current state):**
 - Completed: A1 (code fix), A2 (code hardening), B1–B7, D2, E1, E3, F1–F5, H1–H3
 - Deal Engine V0 Runtime: COMPLETE (65 tests passing, 3 archetype regression tests)
+- MCP Integration: COMPLETE (DealEngineRuntime V0 wired into MCP, DEAL_ENGINE_PRIMARY mode)
+- Excel Template Fix: CRITICAL FIX deployed (3c363a0) - cleared hardcoded TI/LC/CapEx values
 - Blocked (manual/external): A1 ChatGPT verification, A2 ChatGPT sandbox test, C1/C2 template & mapping repairs, D1 22-page pack (missing sheets)
+
+**Recent Critical Fix (2025-12-24):**
+The Excel template had hardcoded TI/LC values in Renovation Budget rows 40-42 that were massively inflating costs for stabilized deals:
+- Row 40: TI during Acquisition Loan ($1,260,000 hardcoded -> $0)
+- Row 41: LC during Acquisition Loan ($810,987 hardcoded -> $0)
+- Row 42: CapEx during Acquisition Loan (hardcoded -> $0)
+
+This fix was deployed in commit `3c363a0` and should improve levered IRR from ~11% to ~34% for the Phoenix warehouse test case.
 
 ---
 
