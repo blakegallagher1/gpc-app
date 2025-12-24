@@ -170,7 +170,7 @@ export class ScenarioRunner implements Module<ScenarioRunnerOutputs> {
     const baseCase: ScenarioCell = {
       exitCapRate: context.metrics.exitCapRate ?? exitInputs.exit_cap_rate,
       exitMonth: timeline.exitMonth,
-      interestRate: debtInputs?.acquisition_loan.rate ?? 0,
+      interestRate: debtInputs?.acquisition_loan?.rate ?? 0,
       unleveredIrr: context.metrics.unleveredIrr ?? 0,
       leveredIrr: context.metrics.leveredIrr ?? 0,
       equityMultiple: context.metrics.equityMultiple ?? 0,
@@ -208,7 +208,7 @@ export class ScenarioRunner implements Module<ScenarioRunnerOutputs> {
     let leveredIrrWarningSent = false;
 
     const computeDebtSchedule = (rate: number): { debtService: Series; loanBalance: Series } => {
-      if (!debtInputs || loanAmount <= 0) {
+      if (!debtInputs || loanAmount <= 0 || !debtInputs.acquisition_loan) {
         const zeros = Series.zeros(timeline.totalMonths);
         return { debtService: zeros, loanBalance: zeros };
       }
