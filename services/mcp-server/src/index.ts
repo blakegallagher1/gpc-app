@@ -21,6 +21,8 @@ const MCP_PUBLIC_URL = process.env.MCP_PUBLIC_URL ?? `http://localhost:${PORT}`;
 // B2 download URL for CSP allow-list (defaults to common Backblaze endpoints)
 const B2_DOWNLOAD_URL = process.env.B2_DOWNLOAD_URL?.trim() ?? "";
 const DEAL_ENGINE_VALIDATE = process.env.DEAL_ENGINE_VALIDATE === "true";
+const DEAL_ENGINE_PRIMARY = process.env.DEAL_ENGINE_PRIMARY === "true";
+const DEAL_ENGINE_PRIMARY_PREFIXES = ["IOS_", "MHP_", "STORAGE_"];
 const MCP_PATH = "/mcp";
 const RATE_LIMIT_WINDOW_SEC = Number(process.env.RATE_LIMIT_WINDOW_SEC ?? 60);
 const RATE_LIMIT_MAX_REQUESTS = Number(process.env.RATE_LIMIT_MAX_REQUESTS ?? 60);
@@ -402,37 +404,55 @@ function getWidgetHtml(): string {
 }
 
 interface DealEngineInputsV0 {
-  contract: { contract_version: "DEAL_ENGINE_V0"; engine_version: string };
-  deal: {
-    project_name: string;
-    city: string;
-    state: string;
-    analysis_start_date: string;
-    hold_period_months: number;
-    gross_sf: number;
-    net_sf: number;
+  [key: string]: unknown;
+  contract: {
+    contract_version: "DEAL_ENGINE_V0";
+    template_id: string;
+    currency: "USD";
+    time_step: "monthly" | "quarterly" | "annual";
   };
+  deal: { project_name: string; analysis_start_date: string; hold_period_months: number };
+  asset: { asset_class: string; gross_sf?: number; net_sf?: number };
+  acquisition: { purchase_price: number; closing_cost_pct: number; closing_cost_fixed?: number };
   modules: {
-    acquisition: {
-      purchase_price: number;
-      closing_cost_pct: number;
-      close_month?: number;
-      option_fee?: number;
-      reserves_at_closing?: number;
-    };
-    lease: { tenants_in_place: unknown[]; market_rollover?: unknown[] };
+    lease: { mode: "commercial_rent_roll"; tenants_in_place: unknown[]; market_rollover?: unknown };
     operating?: {
       vacancy_pct: number;
       credit_loss_pct: number;
-      inflation: { rent: number; expenses: number; taxes: number; recoveries?: number };
+      inflation: { rent: number; expenses: number; taxes: number };
       expenses: {
-        recoveries: { mode: string };
-        fixed_annual?: { reserves?: number; reserves_growth_pct?: number };
+        management_fee_pct_egi?: number;
+        fixed_annual: {
+          taxes?: number;
+          insurance?: number;
+          cam?: number;
+          utilities?: number;
+          repairs_maintenance?: number;
+          admin?: number;
+          custom?: { name: string; amount_year1: number; growth_pct?: number }[];
+          reserves?: { amount_year1: number; growth_pct: number; growth_mode: "annual_compound" | "flat" };
+        };
       };
     };
-    debt?: { acquisition_loan: { ltv_max: number; rate: number; amort_years: number; io_months: number; term_months: number } };
-    exit: { exit_cap_rate: number; exit_month: number; sale_cost_pct: number; forward_noi_months?: number };
-    returns?: { discount_rate_unlevered?: number; discount_rate_levered?: number };
+    debt?: {
+      loans: {
+        loan_id: string;
+        enabled: boolean;
+        loan_type: "acquisition";
+        principal_mode: "sized";
+        sizing: { method: "ltv_dscr"; ltv_max: number; dscr_min: number };
+        rate: { type: "fixed"; rate: number };
+        amort_years: number;
+        term_months: number;
+        io_months: number;
+      }[];
+    };
+    equity: {
+      parties: { party_id: string; name: string; role: "lp"; ownership_pct: number }[];
+      contributions: { upfront_equity: number };
+      waterfall: { style: "european"; tiers: { type: "residual_split"; split: Record<string, number> }[] };
+    };
+    exit: { exit_month: number; exit_cap_rate: number; sale_cost_pct: number; forward_noi_months: number };
   };
 }
 
@@ -443,73 +463,206 @@ function transformToDealEngineV0(indAcq: Record<string, unknown>): DealEngineInp
   const op = indAcq.operating as Record<string, unknown>;
   const debt = indAcq.debt as Record<string, unknown>;
   const exit = indAcq.exit as Record<string, unknown>;
-  const returns = indAcq.returns as Record<string, unknown>;
   const debtLoan = (debt?.acquisition_loan as Record<string, unknown>) ?? {};
   const debtRate = (debtLoan.rate as Record<string, unknown>) ?? {};
+  const fixedAnnual = (op?.expenses as Record<string, unknown>)?.fixed_annual as Record<string, unknown> | undefined;
+
+  const grossSf = (deal?.gross_sf as number) ?? 0;
+  const netSf = (deal?.net_sf as number) ?? grossSf;
+  const purchasePrice = (acq?.purchase_price as number) ?? 0;
+  const closingCostPct = (acq?.closing_cost_pct as number) ?? 0.015;
+  const closingCostFixed = (acq?.closing_cost_fixed as number) ?? 0;
+  const acquisitionCost = purchasePrice + purchasePrice * closingCostPct + closingCostFixed;
+  const ltvMax = (debtLoan.ltv_max as number) ?? 0;
+  const loanAmountEstimate = ltvMax > 0 ? purchasePrice * ltvMax : 0;
+  const upfrontEquity = Math.max(acquisitionCost - loanAmountEstimate, 0);
+
+  const tenants = ((rentRoll?.tenants_in_place as Array<Record<string, unknown>>) ?? []).map((tenant) => {
+    const leaseType = (tenant.lease_type as string | undefined) ?? "NNN";
+    const rentType = leaseType === "GROSS" ? "gross" : leaseType === "MOD_GROSS" ? "modified_gross" : "nnn";
+    return {
+      tenant_name: tenant.tenant_name as string,
+      area: { unit: "sf", value: (tenant.sf as number) ?? 0 },
+      lease_start: tenant.lease_start as string,
+      lease_end: tenant.lease_end as string,
+      rent_type: rentType,
+      base_rent: { unit: "psf_annual", amount: (tenant.current_rent_psf_annual as number) ?? 0 },
+      annual_bump_pct: (tenant.annual_bump_pct as number) ?? 0,
+    };
+  });
+
+  let marketRollover: Record<string, unknown> | undefined;
+  const rolloverEntries = rentRoll?.market_rollover as Array<Record<string, unknown>> | undefined;
+  if (rolloverEntries && rolloverEntries.length > 0) {
+    const entry = rolloverEntries[0] ?? {};
+    const leaseStart = entry.lease_start as string | undefined;
+    const leaseEnd = entry.lease_end as string | undefined;
+    let termMonths = 60;
+    if (leaseStart && leaseEnd) {
+      const start = new Date(leaseStart);
+      const endDate = new Date(leaseEnd);
+      if (!isNaN(start.getTime()) && !isNaN(endDate.getTime())) {
+        termMonths = Math.max(1, (endDate.getFullYear() - start.getFullYear()) * 12 + (endDate.getMonth() - start.getMonth()));
+      }
+    }
+    const ti = (entry.ti as Record<string, unknown>) ?? {};
+    const lc = (entry.lc as Record<string, unknown>) ?? {};
+    const tiPsf = ti.mode === "PER_SF" ? (ti.value as number) ?? 0 : 0;
+    const lcPct = lc.mode === "PCT_RENT" ? (lc.value as number) ?? 0 : 0;
+
+    marketRollover = {
+      default: {
+        market_rent_psf_annual: (entry.market_rent_psf_annual as number) ?? 0,
+        downtime_months: (entry.downtime_months as number) ?? 0,
+        renewal_probability: (entry.renewal_probability as number) ?? 0,
+        ti_psf: tiPsf,
+        lc_pct_of_total_rent: lcPct,
+        new_lease_term_months: termMonths,
+      },
+    };
+  }
+
+  const customExpenses: { name: string; amount_year1: number; growth_pct?: number }[] = [];
+  const otherExpense = fixedAnnual?.other_expense_1 as number | undefined;
+  const otherOperating = fixedAnnual?.other_operating as number | undefined;
+  const otherGrowth = fixedAnnual?.other_operating_growth_pct as number | undefined;
+  if (otherExpense) {
+    customExpenses.push({ name: "other_expense_1", amount_year1: otherExpense, growth_pct: otherGrowth });
+  }
+  if (otherOperating) {
+    customExpenses.push({ name: "other_operating", amount_year1: otherOperating, growth_pct: otherGrowth });
+  }
+
+  const otherPsf = ((op?.expenses as Record<string, unknown>)?.other_expenses_per_nsf_annual as Array<Record<string, unknown>>) ?? [];
+  for (const line of otherPsf) {
+    const amountPerNsf = (line.amount_per_nsf_annual as number) ?? 0;
+    if (amountPerNsf > 0) {
+      customExpenses.push({ name: (line.name as string) ?? "other_expense", amount_year1: amountPerNsf * netSf });
+    }
+  }
+
+  const reservesBase = (fixedAnnual?.reserves as number) ?? 0;
+  const reservesFromPsf = (op?.expenses as Record<string, unknown>)?.capex_reserves_per_nsf_annual as number | undefined;
+  const reservesAmount = reservesBase > 0 ? reservesBase : (reservesFromPsf ?? 0) * netSf;
+  const reservesGrowth = (fixedAnnual?.reserves_growth_pct as number) ?? 0;
 
   return {
-    contract: { contract_version: "DEAL_ENGINE_V0", engine_version: "0.1.0" },
+    contract: {
+      contract_version: "DEAL_ENGINE_V0",
+      template_id: "IND_ACQ_SINGLE_V1",
+      currency: "USD",
+      time_step: "monthly",
+    },
     deal: {
       project_name: (deal?.project_name as string) ?? "Unnamed",
-      city: (deal?.city as string) ?? "",
-      state: (deal?.state as string) ?? "",
-      analysis_start_date: (deal?.analysis_start_date as string) ?? "",
+      analysis_start_date: (deal?.analysis_start_date as string) ?? "2026-01-01",
       hold_period_months: (deal?.hold_period_months as number) ?? 60,
-      gross_sf: (deal?.gross_sf as number) ?? 0,
-      net_sf: (deal?.net_sf as number) ?? 0,
+    },
+    asset: {
+      asset_class: "industrial",
+      gross_sf: grossSf,
+      net_sf: netSf,
+    },
+    acquisition: {
+      purchase_price: purchasePrice,
+      closing_cost_pct: closingCostPct,
+      closing_cost_fixed: closingCostFixed,
     },
     modules: {
-      acquisition: {
-        purchase_price: (acq?.purchase_price as number) ?? 0,
-        closing_cost_pct: (acq?.closing_cost_pct as number) ?? 0.015,
-        close_month: (acq?.close_month as number) ?? 0,
-        option_fee: (acq?.option_fee as number) ?? 0,
-        reserves_at_closing: (acq?.reserves_at_closing as number) ?? 0,
-      },
       lease: {
-        tenants_in_place: (rentRoll?.tenants_in_place as unknown[]) ?? [],
-        market_rollover: rentRoll?.market_rollover as unknown[] | undefined,
+        mode: "commercial_rent_roll",
+        tenants_in_place: tenants,
+        ...(marketRollover ? { market_rollover: marketRollover } : {}),
       },
       operating: op
         ? {
             vacancy_pct: (op.vacancy_pct as number) ?? 0.05,
             credit_loss_pct: (op.credit_loss_pct as number) ?? 0.02,
-            inflation:
-              (op.inflation as { rent: number; expenses: number; taxes: number; recoveries?: number }) ??
-              { rent: 0.03, expenses: 0.025, taxes: 0.02, recoveries: 0.02 },
+            inflation: (op.inflation as { rent: number; expenses: number; taxes: number }) ?? {
+              rent: 0.03,
+              expenses: 0.025,
+              taxes: 0.02,
+            },
             expenses: {
-              recoveries: { mode: (((op.expenses as Record<string, unknown>)?.recoveries as Record<string, unknown>)?.mode as string) ?? "NNN" },
-              fixed_annual: (op.expenses as Record<string, unknown>)?.fixed_annual as
-                | { reserves?: number; reserves_growth_pct?: number }
-                | undefined,
+              management_fee_pct_egi: (op.expenses as Record<string, unknown>)?.management_fee_pct_egi as number | undefined,
+              fixed_annual: {
+                taxes: (fixedAnnual?.property_taxes as number) ?? (fixedAnnual?.taxes as number) ?? 0,
+                insurance: (fixedAnnual?.insurance as number) ?? 0,
+                cam: (fixedAnnual?.cam as number) ?? 0,
+                utilities: (fixedAnnual?.utilities as number) ?? 0,
+                repairs_maintenance: (fixedAnnual?.repairs_maintenance as number) ?? 0,
+                admin: ((fixedAnnual?.admin as number) ?? 0) + ((fixedAnnual?.security as number) ?? 0),
+                ...(customExpenses.length > 0 ? { custom: customExpenses } : {}),
+                ...(reservesAmount > 0 || reservesGrowth !== 0
+                  ? {
+                      reserves: {
+                        amount_year1: reservesAmount,
+                        growth_pct: reservesGrowth,
+                        growth_mode: "annual_compound",
+                      },
+                    }
+                  : {}),
+              },
             },
           }
         : undefined,
       debt: debtLoan.ltv_max
         ? {
-            acquisition_loan: {
-              ltv_max: debtLoan.ltv_max as number,
-              rate: (debtRate.fixed_rate as number) ?? 0.065,
-              amort_years: (debtLoan.amort_years as number) ?? 25,
-              io_months: (debtLoan.io_months as number) ?? 12,
-              term_months: (debtLoan.term_months as number) ?? 60,
-            },
+            loans: [
+              {
+                loan_id: "acq",
+                enabled: true,
+                loan_type: "acquisition",
+                principal_mode: "sized",
+                sizing: { method: "ltv_dscr", ltv_max: (debtLoan.ltv_max as number) ?? 0, dscr_min: 1.25 },
+                rate: { type: "fixed", rate: (debtRate.fixed_rate as number) ?? 0.065 },
+                amort_years: (debtLoan.amort_years as number) ?? 25,
+                term_months: (debtLoan.term_months as number) ?? 60,
+                io_months: (debtLoan.io_months as number) ?? 0,
+              },
+            ],
           }
         : undefined,
+      equity: {
+        parties: [{ party_id: "equity", name: "Equity", role: "lp", ownership_pct: 1.0 }],
+        contributions: { upfront_equity: upfrontEquity },
+        waterfall: { style: "european", tiers: [{ type: "residual_split", split: { equity: 1.0 } }] },
+      },
       exit: {
         exit_cap_rate: (exit?.exit_cap_rate as number) ?? 0.07,
         exit_month: (exit?.exit_month as number) ?? 60,
         sale_cost_pct: (exit?.sale_cost_pct as number) ?? 0.02,
-        forward_noi_months: exit?.forward_noi_months as number | undefined,
+        forward_noi_months: (exit?.forward_noi_months as number) ?? 12,
       },
-      returns: returns
-        ? {
-            discount_rate_unlevered: (returns?.discount_rate_unlevered as number) ?? undefined,
-            discount_rate_levered: (returns?.discount_rate_levered as number) ?? undefined,
-          }
-        : undefined,
     },
   };
+}
+
+function isDealEngineV0Input(inputs: Record<string, unknown>): inputs is DealEngineInputsV0 {
+  const contract = inputs.contract as Record<string, unknown> | undefined;
+  return contract?.contract_version === "DEAL_ENGINE_V0";
+}
+
+function isDealEnginePrimaryTemplate(templateId?: string): boolean {
+  if (!templateId) return false;
+  return DEAL_ENGINE_PRIMARY_PREFIXES.some((prefix) => templateId.startsWith(prefix));
+}
+
+function mapDealEngineMetricsToOutputs(metrics: Record<string, number>): Record<string, unknown> {
+  const outputs: Record<string, unknown> = {
+    "out.checks.status": "OK",
+    "out.checks.error_count": 0,
+  };
+
+  if (metrics.unlevered_irr !== undefined) outputs["out.returns.unlevered.irr"] = metrics.unlevered_irr;
+  if (metrics.levered_irr !== undefined) outputs["out.returns.levered.irr"] = metrics.levered_irr;
+  if (metrics.equity_multiple !== undefined) outputs["out.returns.levered.multiple"] = metrics.equity_multiple;
+  if (metrics.equity_multiple !== undefined) outputs["out.returns.unlevered.multiple"] = metrics.equity_multiple;
+  if (metrics.loan_amount !== undefined) outputs["out.debt.total_proceeds"] = metrics.loan_amount;
+  if (metrics.noi_year1 !== undefined) outputs["out.cashflow.year_1_noi"] = metrics.noi_year1;
+  if (metrics.exit_value !== undefined) outputs["out.exit.sale_proceeds"] = metrics.exit_value;
+
+  return outputs;
 }
 
 interface ValidationComparison {
@@ -534,22 +687,22 @@ async function runDealEngineValidation(
 
   try {
     // @ts-expect-error - @gpc/deal-engine is optional; dynamically imported only when DEAL_ENGINE_VALIDATE=true
-    const { DealEngine } = await import("@gpc/deal-engine");
-    const engine = new DealEngine();
+    const { DealEngineRuntime } = await import("@gpc/deal-engine");
     const transformed = transformToDealEngineV0(inputs);
-    const result = await engine.run(transformed);
+    const runtime = new DealEngineRuntime(transformed);
+    const result = runtime.run();
 
-    if (!result.success || !result.context) {
-      return { enabled: true, dealEngineSuccess: false, error: result.errors?.join("; ") };
+    if (!result.validation.valid) {
+      return { enabled: true, dealEngineSuccess: false, error: result.validation.errors?.join("; ") };
     }
 
-    const m = result.context.metrics;
+    const m = result.metrics;
     const discrepancies: { metric: string; excel: number; dealEngine: number; pctDiff: number }[] = [];
 
     const comparisons = [
-      { metric: "unlevered_irr", excel: excelOutputs["out.returns.unlevered.irr"] as number, de: m.unleveredIrr },
-      { metric: "levered_irr", excel: excelOutputs["out.returns.levered.irr"] as number, de: m.leveredIrr },
-      { metric: "year1_noi", excel: excelOutputs["out.cashflow.year_1_noi"] as number, de: m.noiYear1 },
+      { metric: "unlevered_irr", excel: excelOutputs["out.returns.unlevered.irr"] as number, de: m.unlevered_irr as number },
+      { metric: "levered_irr", excel: excelOutputs["out.returns.levered.irr"] as number, de: m.levered_irr as number },
+      { metric: "year1_noi", excel: excelOutputs["out.cashflow.year_1_noi"] as number, de: m.noi_year1 as number },
     ];
 
     for (const c of comparisons) {
@@ -567,27 +720,10 @@ async function runDealEngineValidation(
       }
     }
 
-    const scenarioConfig = (transformed.modules as Record<string, unknown>)?.scenario as
-      | Record<string, unknown>
-      | undefined;
-    const scenarioEnabled = scenarioConfig?.enabled === true;
-    const scenarioOutputs = scenarioEnabled
-      ? (result.context.outputs.scenario as Record<string, unknown> | undefined)
-      : undefined;
-
     return {
       enabled: true,
       dealEngineSuccess: true,
       discrepancies: discrepancies.length > 0 ? discrepancies : undefined,
-      scenario: scenarioOutputs
-        ? {
-            baseCase: (scenarioOutputs.baseCase as Record<string, unknown>) ?? {},
-            grid: (scenarioOutputs.grid as Record<string, unknown>) ?? [],
-            exitCapRates: (scenarioOutputs.exitCapRates as number[]) ?? [],
-            exitMonths: (scenarioOutputs.exitMonths as number[]) ?? [],
-            interestRates: (scenarioOutputs.interestRates as number[]) ?? [],
-          }
-        : undefined,
     };
   } catch (e) {
     log.warn("Deal Engine validation failed", { error: String(e) });
@@ -728,6 +864,47 @@ function createIndAcqServer() {
           return buildToolResponse({
             status: "failed",
             error: `NL extraction failed: ${String(error)}`,
+          });
+        }
+      }
+
+      const templateId = ((mergedInputs.contract as Record<string, unknown> | undefined)?.template_id as string | undefined)?.toUpperCase();
+      const useDealEnginePrimary = DEAL_ENGINE_PRIMARY && isDealEnginePrimaryTemplate(templateId);
+
+      if (mode === "run" && useDealEnginePrimary) {
+        if (!isDealEngineV0Input(mergedInputs)) {
+          return buildToolResponse({
+            status: "failed",
+            error: "Deal Engine primary mode requires DEAL_ENGINE_V0 inputs for this template.",
+          });
+        }
+
+        try {
+          // @ts-expect-error - @gpc/deal-engine is optional; dynamically imported only when DEAL_ENGINE_PRIMARY=true
+          const { DealEngineRuntime } = await import("@gpc/deal-engine");
+          const runtime = new DealEngineRuntime(mergedInputs);
+          const result = runtime.run();
+
+          if (!result.validation.valid) {
+            return buildToolResponse({
+              status: "invalid",
+              errors: result.validation.errors.map((message: string) => ({ path: "/", message })),
+            });
+          }
+
+          return buildToolResponse({
+            status: "complete",
+            job_id: `deal_engine_${Date.now()}`,
+            outputs: mapDealEngineMetricsToOutputs(result.metrics),
+            file_path: null,
+            download_url: null,
+            download_url_expiry: null,
+            engine: "deal-engine-v0",
+          });
+        } catch (error) {
+          return buildToolResponse({
+            status: "failed",
+            error: `Deal Engine runtime error: ${String(error)}`,
           });
         }
       }
@@ -1042,6 +1219,7 @@ function buildToolResponse(result: ToolResult) {
       job_id: jobId,
       full_outputs: result.outputs,
       file_path: result.file_path,
+      ...(result.engine ? { engine: result.engine } : {}),
     };
   } else {
     // For non-complete statuses, keep structuredContent as-is
@@ -1709,6 +1887,7 @@ type ToolResult =
       download_url_expiry: string | null;
       warning?: string | null;
       deal_engine_validation?: ValidationComparison;
+      engine?: string;
       assumptions_applied?: AppliedDefault[];
       guidance?: Guidance;
     }

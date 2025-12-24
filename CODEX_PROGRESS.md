@@ -7,7 +7,8 @@ This file tracks all pending work items for the GPC App platform. Codex should u
 
 **Summary (current state):**
 - Completed: A1 (code fix), A2 (code hardening), B1–B7, D2, E1, E3, F1–F5, H1–H3
-- Blocked (manual/external): A1 ChatGPT verification, A2 ChatGPT sandbox test, C1/C2 template & mapping repairs, D1 22-page pack (missing sheets), F4 unit/integration tests (needs expected outputs)
+- Deal Engine V0 Runtime: COMPLETE (65 tests passing, 3 archetype regression tests)
+- Blocked (manual/external): A1 ChatGPT verification, A2 ChatGPT sandbox test, C1/C2 template & mapping repairs, D1 22-page pack (missing sheets)
 
 ---
 
@@ -294,9 +295,9 @@ These enable "structure the deal however I want."
 - [x] Validation layer (DEAL_ENGINE_VALIDATE flag)
 
 ### F4. Testing & Validation
-- [!] Unit tests for all modules
-- [!] Integration tests with sample deals
-- [!] Demo harness for the engine
+- [x] Unit tests for all modules (65 tests passing)
+- [x] Integration tests with sample deals (3 archetype regression tests)
+- [x] Demo harness for the engine (scripts/run-deal-engine.mjs CLI)
 - [!] Comparison report: Deal Engine vs Excel Engine
 
 ### F5. Discount Rate Inputs (NPV)
@@ -498,6 +499,36 @@ Use this section to log progress during work sessions.
 - Template Library v1: 13 template definitions
 - Deal Engine v0 schema: Draft 2020-12 with 10 module types
 - Fixtures + validation: 13 fixtures + AJV validation script
+2025-12-24 10:30 - [Session] Deal Engine V0 Runtime Implementation
+- Phase 1: Core infrastructure + module skeletons + CLI runner
+  - DealEngineRuntime orchestrator
+  - DealContext with series registry
+  - Timeline with timeStep support (monthly/quarterly/annual)
+  - Series class with vector math helpers
+  - Module skeletons for all 10 module types
+- Phase 2: Real module calculations
+  - LeaseModule: commercial_rent_roll, multifamily_unit_mix, storage_unit_mix, mhp_lot_rent
+  - OperatingModule: vacancy, expenses, inflation, NOI
+  - DebtModule: LTV/DSCR sizing, amortization schedule
+  - ExitModule: cap rate reversion, IRR, equity multiple
+  - EquityModule: upfront contributions
+- Bug fixes:
+  - Market rollover logic (tenant renewals after lease expiry)
+  - Equity invested calculation (uses upfront_equity when available)
+  - CapexModule merges existing capex series
+- Testing: 65 tests passing, 3 archetype regression tests
+- CLI: scripts/run-deal-engine.mjs for fixture execution
+- Commits: feat: Deal Engine V0 core + calculations, fix: market rollover + equity handling
+- Files: services/deal-engine/src/**/*.ts, testcases/deal_engine_v0/**/*.json
+2025-12-24 11:00 - [Session] MCP Integration with Deal Engine V0
+- Added DEAL_ENGINE_PRIMARY env flag for V0 primary path
+- Added DEAL_ENGINE_PRIMARY_PREFIXES = ["IOS_", "MHP_", "STORAGE_"]
+- Updated validation adapter to use DealEngineRuntime (not old DealEngine)
+- Added direct V0 input support in build_model when DEAL_ENGINE_PRIMARY=true
+- Added _meta.engine = "deal-engine-v0" for V0-powered responses
+- Created scripts/excel-vs-dealengine-check.sh for cross-validation
+- IND_ACQ stays on Excel path for safety
+- Files: services/mcp-server/src/index.ts, scripts/excel-vs-dealengine-check.sh
 ```
 
 ---
