@@ -11,6 +11,15 @@ export {
 } from "./core/date-utils.js";
 export { pmt, irr, xirr, npv, annualToMonthly, monthlyToAnnual } from "./core/math-utils.js";
 
+// Runtime
+export { DealEngineRuntime } from "./runtime/dealEngine.js";
+export { DealContext } from "./runtime/context.js";
+export type {
+  DealEngineRequestV0,
+  DealEngineResult as DealEngineRuntimeResult,
+  DealEngineValidation as DealEngineRuntimeValidation,
+} from "./runtime/types.js";
+
 // Types (all type-only exports)
 export type {
   DealEngineInputs,
@@ -42,7 +51,7 @@ export type {
   ScenarioInterestRateRangeInput,
   ScenarioInput,
 } from "./types/inputs.js";
-export type { DealContext, DealMetrics } from "./types/context.js";
+export type { DealContext as DealContextData, DealMetrics } from "./types/context.js";
 export type { ValidationResult, ValidationError, ModuleResult, Module } from "./types/module.js";
 
 // Modules

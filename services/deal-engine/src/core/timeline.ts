@@ -1,10 +1,13 @@
 import { DateTime } from "luxon";
 
+export type TimeStep = "monthly" | "quarterly" | "annual";
+
 export interface TimelineConfig {
   startDate: string; // ISO date string (e.g., '2026-01-01')
   holdPeriodMonths: number; // Total months in analysis
   exitMonth?: number; // Optional, defaults to holdPeriodMonths
   closeMonth?: number; // Optional, defaults to 0
+  timeStep?: TimeStep; // Optional, defaults to monthly
 }
 
 export class Timeline {
@@ -13,9 +16,23 @@ export class Timeline {
   readonly exitMonth: number;
   readonly closeMonth: number;
   readonly endDate: DateTime;
+  readonly timeStep: TimeStep;
+  readonly months: number[];
 
-  constructor(config: TimelineConfig) {
-    if (!Number.isInteger(config.holdPeriodMonths) || config.holdPeriodMonths <= 0) {
+  constructor(config: TimelineConfig);
+  constructor(startDate: string, holdPeriodMonths: number, timeStep?: TimeStep);
+  constructor(
+    configOrStartDate: TimelineConfig | string,
+    holdPeriodMonths?: number,
+    timeStep: TimeStep = "monthly",
+  ) {
+    const config: TimelineConfig =
+      typeof configOrStartDate === "string"
+        ? { startDate: configOrStartDate, holdPeriodMonths: holdPeriodMonths ?? 0, timeStep }
+        : configOrStartDate;
+
+    const resolvedHoldPeriodMonths = config.holdPeriodMonths;
+    if (!Number.isInteger(resolvedHoldPeriodMonths) || resolvedHoldPeriodMonths <= 0) {
       throw new Error("holdPeriodMonths must be a positive integer");
     }
 
@@ -24,8 +41,8 @@ export class Timeline {
       throw new Error(`Invalid startDate: ${config.startDate}`);
     }
 
-    const exitMonth = config.exitMonth ?? config.holdPeriodMonths;
-    if (!Number.isInteger(exitMonth) || exitMonth <= 0 || exitMonth > config.holdPeriodMonths) {
+    const exitMonth = config.exitMonth ?? resolvedHoldPeriodMonths;
+    if (!Number.isInteger(exitMonth) || exitMonth <= 0 || exitMonth > resolvedHoldPeriodMonths) {
       throw new Error("exitMonth must be an integer between 1 and holdPeriodMonths");
     }
 
@@ -35,10 +52,12 @@ export class Timeline {
     }
 
     this.startDate = startDate;
-    this.holdPeriodMonths = config.holdPeriodMonths;
+    this.holdPeriodMonths = resolvedHoldPeriodMonths;
     this.exitMonth = exitMonth;
     this.closeMonth = closeMonth;
     this.endDate = this.startDate.plus({ months: this.holdPeriodMonths });
+    this.timeStep = config.timeStep ?? "monthly";
+    this.months = Array.from({ length: this.totalMonths }, (_, i) => i);
   }
 
   monthIndex(date: DateTime | string): number {
@@ -65,7 +84,16 @@ export class Timeline {
     return this.holdPeriodMonths;
   }
 
-  *months(): Generator<number> {
+  getMonthIndex(date: string): number {
+    return this.monthIndex(date);
+  }
+
+  getDateAtMonth(monthIndex: number): string {
+    const date = this.dateAt(monthIndex);
+    return date.toISODate() ?? "";
+  }
+
+  *monthIterator(): Generator<number> {
     for (let i = 0; i < this.totalMonths; i += 1) {
       yield i;
     }

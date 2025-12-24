@@ -2,7 +2,14 @@ export class Series {
   readonly values: readonly number[];
   readonly length: number;
 
-  constructor(values: number[] | readonly number[]) {
+  constructor(values: number[] | readonly number[]);
+  constructor(length: number, initialValue?: number);
+  constructor(valuesOrLength: number[] | readonly number[] | number, initialValue = 0) {
+    const values =
+      typeof valuesOrLength === "number"
+        ? Series.fromLength(valuesOrLength, initialValue)
+        : valuesOrLength;
+
     if (!Array.isArray(values)) {
       throw new TypeError("values must be an array");
     }
@@ -21,6 +28,10 @@ export class Series {
   static zeros(length: number): Series {
     Series.assertLength(length);
     return new Series(Array.from({ length }, () => 0));
+  }
+
+  static fromArray(arr: number[]): Series {
+    return new Series(arr);
   }
 
   static constant(value: number, length: number): Series {
@@ -49,6 +60,22 @@ export class Series {
       throw new RangeError(`index must be between 0 and ${Math.max(0, this.length - 1)}`);
     }
     return this.values[index] ?? 0;
+  }
+
+  set(index: number, value: number): Series {
+    if (!Number.isInteger(index)) {
+      throw new TypeError("index must be an integer");
+    }
+    if (index < 0 || index >= this.length) {
+      throw new RangeError(`index must be between 0 and ${Math.max(0, this.length - 1)}`);
+    }
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      throw new TypeError("value must be a finite number");
+    }
+
+    const next = this.toArray();
+    next[index] = value;
+    return new Series(next);
   }
 
   slice(start: number, end?: number): Series {
@@ -111,6 +138,10 @@ export class Series {
         return runningTotal;
       }),
     );
+  }
+
+  cumsum(): Series {
+    return this.cumulative();
   }
 
   growth(annualRate: number): Series {
@@ -214,5 +245,11 @@ export class Series {
     if (typeof value !== "number" || !Number.isFinite(value)) {
       throw new TypeError(`${name} must be a finite number`);
     }
+  }
+
+  private static fromLength(length: number, initialValue: number): number[] {
+    Series.assertLength(length);
+    Series.assertFiniteNumber(initialValue, "initialValue");
+    return Array.from({ length }, () => initialValue);
   }
 }
