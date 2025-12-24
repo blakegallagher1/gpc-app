@@ -71,3 +71,15 @@ export type { ScenarioRunnerOutputs, ScenarioCell } from "./modules/scenario/sce
 // Engine
 export { DealEngine, createSummaryReport } from "./engine/deal-engine.js";
 export type { DealEngineResult, DealEngineValidation } from "./engine/deal-engine.js";
+
+// Formatters
+export {
+  generateAnnualCashFlow,
+  formatAnnualCashFlowAsText,
+  formatAnnualCashFlowAsJson,
+} from "./formatters/annual-cashflow.js";
+export type {
+  AnnualCashFlowRow,
+  AnnualCashFlowTable,
+  AnnualCashFlowInputs,
+} from "./formatters/annual-cashflow.js";
