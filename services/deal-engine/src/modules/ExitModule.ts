@@ -18,6 +18,11 @@ type DealEngineRequestShape = {
   };
   modules?: {
     exit?: ExitInput;
+    equity?: {
+      contributions?: {
+        upfront_equity?: number;
+      };
+    };
   };
 };
 
@@ -56,7 +61,10 @@ export class ExitModule implements DealModule {
 
     const loanAmount = ctx.getMetric("loan_amount") ?? 0;
     const originationFee = ctx.getMetric("origination_fee") ?? 0;
-    const equityInvested = Math.max(acquisitionCost - loanAmount + originationFee, 0);
+    const upfrontEquity = (request as DealEngineRequestShape).modules?.equity?.contributions?.upfront_equity;
+    const equityInvested = Number.isFinite(upfrontEquity)
+      ? Math.max(upfrontEquity as number, 0)
+      : Math.max(acquisitionCost - loanAmount + originationFee, 0);
 
     const unleveredCashflows = new Array<number>(totalMonths).fill(0);
     const leveredCashflows = new Array<number>(totalMonths).fill(0);

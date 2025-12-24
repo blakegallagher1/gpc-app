@@ -2,9 +2,9 @@
   "metrics": {
     "noi_year1": 592227.2500000002,
     "loan_amount": 5200000,
-    "unlevered_irr": -0.10072280942365947,
-    "levered_irr": 0,
-    "equity_multiple": 0.21321319780286382,
-    "exit_value": 3341203.037791607
+    "unlevered_irr": 0.10147298079206579,
+    "levered_irr": 0.14916357594042268,
+    "equity_multiple": 1.92911479551942,
+    "exit_value": 9723167.323505893
   }
 }

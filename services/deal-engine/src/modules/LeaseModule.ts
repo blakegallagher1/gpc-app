@@ -8,6 +8,7 @@ type LeaseMode = "commercial_rent_roll" | "multifamily_unit_mix" | "storage_unit
 type LeaseInput = {
   mode: LeaseMode;
   tenants_in_place?: CommercialTenantInput[];
+  market_rollover?: MarketRolloverInput;
   unit_types?: UnitTypeInput[];
   lots_total?: number;
   lots_occupied_initial?: number;
@@ -32,6 +33,17 @@ type RentStepInput = {
   start: string;
   end: string;
   rent: { unit: BaseRentUnit; amount: number };
+};
+
+type MarketRolloverInput = {
+  default: {
+    market_rent_psf_annual: number;
+    downtime_months: number;
+    renewal_probability?: number;
+    ti_psf?: number;
+    lc_pct_of_total_rent?: number;
+    new_lease_term_months: number;
+  };
 };
 
 type BaseRentUnit =
@@ -80,10 +92,17 @@ export class LeaseModule implements DealModule {
 
     const totalMonths = ctx.timeline.totalMonths;
     const rentValues = Array.from({ length: totalMonths }, () => 0);
+    const rolloverCosts = Array.from({ length: totalMonths }, () => 0);
 
     switch (lease.mode) {
       case "commercial_rent_roll":
-        this.applyCommercialRentRoll(ctx.timeline, lease.tenants_in_place ?? [], rentValues);
+        this.applyCommercialRentRoll(
+          ctx.timeline,
+          lease.tenants_in_place ?? [],
+          lease.market_rollover,
+          rentValues,
+          rolloverCosts,
+        );
         break;
       case "multifamily_unit_mix":
         this.applyUnitMix(lease.unit_types ?? [], lease.lease_up, rentValues, totalMonths);
@@ -100,12 +119,21 @@ export class LeaseModule implements DealModule {
     }
 
     ctx.setSeries("gross_potential_rent", new Series(rentValues));
+    if (rolloverCosts.some((value) => value !== 0)) {
+      const existingCapex = ctx.getSeries("capex")?.toArray() ?? Array.from({ length: totalMonths }, () => 0);
+      for (let i = 0; i < totalMonths; i += 1) {
+        existingCapex[i] += rolloverCosts[i] ?? 0;
+      }
+      ctx.setSeries("capex", existingCapex);
+    }
   }
 
   private applyCommercialRentRoll(
     timeline: Timeline,
     tenants: CommercialTenantInput[],
+    marketRollover: MarketRolloverInput | undefined,
     rentValues: number[],
+    rolloverCosts: number[],
   ): void {
     for (const tenant of tenants) {
       const steps = tenant.rent_steps ?? [];
@@ -127,6 +155,17 @@ export class LeaseModule implements DealModule {
         const adjusted = baseMonthly * Math.pow(1 + bumpPct, Math.max(0, yearsElapsed));
         rentValues[month] = (rentValues[month] ?? 0) + adjusted;
       }
+
+      if (marketRollover && endIndex < rentValues.length) {
+        this.applyMarketRollover(
+          timeline,
+          tenant,
+          endIndex,
+          marketRollover.default,
+          rentValues,
+          rolloverCosts,
+        );
+      }
     }
   }
 
@@ -144,6 +183,47 @@ export class LeaseModule implements DealModule {
       for (let month = Math.max(startIndex, 0); month < Math.min(endIndex, rentValues.length); month += 1) {
         rentValues[month] = (rentValues[month] ?? 0) + monthly;
       }
+    }
+  }
+
+  private applyMarketRollover(
+    timeline: Timeline,
+    tenant: CommercialTenantInput,
+    leaseEndIndex: number,
+    rollover: MarketRolloverInput["default"],
+    rentValues: number[],
+    rolloverCosts: number[],
+  ): void {
+    const downtime = Math.max(rollover.downtime_months ?? 0, 0);
+    const newStart = leaseEndIndex + downtime;
+    if (newStart >= rentValues.length) {
+      return;
+    }
+
+    const newTermMonths = Math.max(rollover.new_lease_term_months ?? 0, 0);
+    if (newTermMonths === 0) {
+      return;
+    }
+
+    const newEnd = Math.min(rentValues.length, newStart + newTermMonths);
+    const monthlyRent = (rollover.market_rent_psf_annual * tenant.area.value) / 12;
+
+    for (let month = newStart; month < newEnd; month += 1) {
+      rentValues[month] = (rentValues[month] ?? 0) + monthlyRent;
+    }
+
+    const renewalProbability = Math.min(Math.max(rollover.renewal_probability ?? 0, 0), 1);
+    const newTenantProbability = 1 - renewalProbability;
+    if (newTenantProbability <= 0) {
+      return;
+    }
+
+    const totalRent = monthlyRent * (newEnd - newStart);
+    const tiCost = (rollover.ti_psf ?? 0) * tenant.area.value * newTenantProbability;
+    const lcCost = totalRent * (rollover.lc_pct_of_total_rent ?? 0) * newTenantProbability;
+
+    if (tiCost !== 0 || lcCost !== 0) {
+      rolloverCosts[newStart] -= tiCost + lcCost;
     }
   }
 

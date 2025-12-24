@@ -29,7 +29,8 @@ export class CapexModule implements DealModule {
     }
 
     const totalMonths = ctx.timeline.totalMonths;
-    const values = new Array<number>(totalMonths).fill(0);
+    const existing = ctx.getSeries("capex")?.toArray() ?? new Array<number>(totalMonths).fill(0);
+    const values = existing.slice();
 
     for (const item of capex.one_time_items ?? []) {
       if (Number.isInteger(item.month) && item.month >= 0 && item.month < totalMonths) {
