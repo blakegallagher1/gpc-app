@@ -1,18 +1,28 @@
-import { Series } from "../core/series.js";
 import type { DealContext } from "../runtime/context.js";
 import type { DealEngineRequestV0, DealModule } from "../runtime/types.js";
+
+type DevelopmentInput = {
+  enabled: boolean;
+  timeline?: Record<string, number>;
+};
+
+type DealEngineRequestShape = {
+  modules?: {
+    development?: DevelopmentInput;
+  };
+};
 
 export class DevelopmentModule implements DealModule {
   name = "development";
 
   run(ctx: DealContext, request: DealEngineRequestV0): void {
-    const modules = (request as { modules?: Record<string, unknown> }).modules;
-    if (!modules || !Object.prototype.hasOwnProperty.call(modules, this.name)) {
+    const development = (request as DealEngineRequestShape).modules?.development;
+    if (!development) {
       return;
     }
 
-    ctx.addWarning(`Module ${this.name}: placeholder implementation`);
-    ctx.setSeries(`${this.name}.placeholder`, Series.zeros(ctx.timeline.totalMonths));
-    ctx.setMetric(`${this.name}.placeholder`, 0);
+    if (development.enabled) {
+      ctx.addWarning("Development module placeholder: timeline captured, no cash flow impact applied");
+    }
   }
 }

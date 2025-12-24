@@ -1,18 +1,21 @@
-import { Series } from "../core/series.js";
 import type { DealContext } from "../runtime/context.js";
 import type { DealEngineRequestV0, DealModule } from "../runtime/types.js";
+
+type DealEngineRequestShape = {
+  modules?: {
+    scenario?: Record<string, unknown>;
+  };
+};
 
 export class ScenarioModule implements DealModule {
   name = "scenario";
 
   run(ctx: DealContext, request: DealEngineRequestV0): void {
-    const modules = (request as { modules?: Record<string, unknown> }).modules;
-    if (!modules || !Object.prototype.hasOwnProperty.call(modules, this.name)) {
+    const scenario = (request as DealEngineRequestShape).modules?.scenario;
+    if (!scenario) {
       return;
     }
 
-    ctx.addWarning(`Module ${this.name}: placeholder implementation`);
-    ctx.setSeries(`${this.name}.placeholder`, Series.zeros(ctx.timeline.totalMonths));
-    ctx.setMetric(`${this.name}.placeholder`, 0);
+    ctx.addWarning("Scenario grids not implemented in runtime");
   }
 }

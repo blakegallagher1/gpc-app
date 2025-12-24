@@ -2,17 +2,41 @@ import { Series } from "../core/series.js";
 import type { DealContext } from "../runtime/context.js";
 import type { DealEngineRequestV0, DealModule } from "../runtime/types.js";
 
+type CapexItem = {
+  name: string;
+  month: number;
+  amount: number;
+  category: string;
+};
+
+type CapexInput = {
+  one_time_items?: CapexItem[];
+};
+
+type DealEngineRequestShape = {
+  modules?: {
+    capex?: CapexInput;
+  };
+};
+
 export class CapexModule implements DealModule {
   name = "capex";
 
   run(ctx: DealContext, request: DealEngineRequestV0): void {
-    const modules = (request as { modules?: Record<string, unknown> }).modules;
-    if (!modules || !Object.prototype.hasOwnProperty.call(modules, this.name)) {
+    const capex = (request as DealEngineRequestShape).modules?.capex;
+    if (!capex) {
       return;
     }
 
-    ctx.addWarning(`Module ${this.name}: placeholder implementation`);
-    ctx.setSeries(`${this.name}.placeholder`, Series.zeros(ctx.timeline.totalMonths));
-    ctx.setMetric(`${this.name}.placeholder`, 0);
+    const totalMonths = ctx.timeline.totalMonths;
+    const values = new Array<number>(totalMonths).fill(0);
+
+    for (const item of capex.one_time_items ?? []) {
+      if (Number.isInteger(item.month) && item.month >= 0 && item.month < totalMonths) {
+        values[item.month] -= item.amount;
+      }
+    }
+
+    ctx.setSeries("capex", new Series(values));
   }
 }

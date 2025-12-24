@@ -1,0 +1,10 @@
+{
+  "metrics": {
+    "noi_year1": 592227.2500000002,
+    "loan_amount": 5200000,
+    "unlevered_irr": -0.10072280942365947,
+    "levered_irr": 0,
+    "equity_multiple": 0.21321319780286382,
+    "exit_value": 3341203.037791607
+  }
+}

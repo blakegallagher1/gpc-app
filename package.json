@@ -14,6 +14,7 @@
     "typecheck": "pnpm -r typecheck",
     "validate:schema": "node scripts/validate-schema.mjs",
     "validate:deal-engine-fixtures": "node scripts/validate-deal-engine-fixtures.mjs",
+    "test:deal-engine": "pnpm --filter @gpc/deal-engine test",
     "ci": "pnpm validate:schema && pnpm typecheck && pnpm build"
   },
   "devDependencies": {

@@ -1,18 +1,21 @@
-import { Series } from "../core/series.js";
 import type { DealContext } from "../runtime/context.js";
 import type { DealEngineRequestV0, DealModule } from "../runtime/types.js";
+
+type DealEngineRequestShape = {
+  modules?: {
+    portfolio?: Record<string, unknown>;
+  };
+};
 
 export class PortfolioModule implements DealModule {
   name = "portfolio";
 
   run(ctx: DealContext, request: DealEngineRequestV0): void {
-    const modules = (request as { modules?: Record<string, unknown> }).modules;
-    if (!modules || !Object.prototype.hasOwnProperty.call(modules, this.name)) {
+    const portfolio = (request as DealEngineRequestShape).modules?.portfolio;
+    if (!portfolio) {
       return;
     }
 
-    ctx.addWarning(`Module ${this.name}: placeholder implementation`);
-    ctx.setSeries(`${this.name}.placeholder`, Series.zeros(ctx.timeline.totalMonths));
-    ctx.setMetric(`${this.name}.placeholder`, 0);
+    ctx.addWarning("Portfolio aggregation not implemented, using first asset only");
   }
 }
