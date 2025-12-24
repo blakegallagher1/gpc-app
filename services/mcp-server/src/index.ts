@@ -14,6 +14,24 @@ const addFormats = (addFormatsModule as any).default ?? addFormatsModule;
 import { EXCEL_ENGINE_BASE_URL, contractsPath } from "./config.js";
 import { z } from "zod";
 
+// Annual cash flow formatter types (dynamically imported with deal engine)
+interface AnnualCashFlowTable {
+  years: number[];
+  yearLabels: string[];
+  yearEnding: string[];
+  rows: AnnualCashFlowRow[];
+}
+
+interface AnnualCashFlowRow {
+  label: string;
+  values: (string | number | null)[];
+  isHeader?: boolean;
+  isSubtotal?: boolean;
+  isTotal?: boolean;
+  format?: "currency" | "percent" | "psf" | "text";
+  indent?: number;
+}
+
 const PORT = Number(process.env.PORT ?? 8000);
 const WIDGET_PUBLIC_URL = process.env.WIDGET_PUBLIC_URL ?? process.env.WIDGET_URL ?? "http://localhost:3001";
 // MCP server public URL for CSP connect-src (defaults to localhost for dev)
@@ -881,7 +899,7 @@ function createIndAcqServer() {
 
         try {
           // @ts-expect-error - @gpc/deal-engine is optional; dynamically imported only when DEAL_ENGINE_PRIMARY=true
-          const { DealEngineRuntime } = await import("@gpc/deal-engine");
+          const { DealEngineRuntime, generateAnnualCashFlow, formatAnnualCashFlowAsJson } = await import("@gpc/deal-engine");
           const runtime = new DealEngineRuntime(mergedInputs);
           const result = runtime.run();
 
@@ -892,10 +910,24 @@ function createIndAcqServer() {
             });
           }
 
+          // Generate annual cash flow table from series data
+          const dealInputs = mergedInputs as DealEngineInputsV0;
+          const annualCashFlow = generateAnnualCashFlow({
+            analysisStartDate: dealInputs.deal.analysis_start_date,
+            holdPeriodMonths: dealInputs.deal.hold_period_months,
+            grossSf: dealInputs.asset.gross_sf ?? 0,
+            netSf: dealInputs.asset.net_sf ?? dealInputs.asset.gross_sf ?? 0,
+            series: result.series,
+            metrics: result.metrics,
+          });
+
+          const annualCashFlowJson = formatAnnualCashFlowAsJson(annualCashFlow);
+
           return buildToolResponse({
             status: "complete",
             job_id: `deal_engine_${Date.now()}`,
             outputs: mapDealEngineMetricsToOutputs(result.metrics),
+            annual_cashflow: annualCashFlowJson,
             file_path: null,
             download_url: null,
             download_url_expiry: null,
@@ -1203,6 +1235,8 @@ function buildToolResponse(result: ToolResult) {
         error_count: result.outputs["out.checks.error_count"],
       },
       metrics: summaryMetrics,
+      // Include annual cash flow summary (clean format, no monthly data)
+      ...(result.annual_cashflow ? { annual_cashflow: result.annual_cashflow } : {}),
       download_url: result.download_url,
       download_url_expiry: result.download_url_expiry,
       // Include warning if MT template was quarantined
@@ -1220,6 +1254,7 @@ function buildToolResponse(result: ToolResult) {
       full_outputs: result.outputs,
       file_path: result.file_path,
       ...(result.engine ? { engine: result.engine } : {}),
+      ...(result.annual_cashflow ? { annual_cashflow: result.annual_cashflow } : {}),
     };
   } else {
     // For non-complete statuses, keep structuredContent as-is
@@ -1882,6 +1917,7 @@ type ToolResult =
       status: "complete";
       job_id: string;
       outputs: Record<string, unknown>;
+      annual_cashflow?: Record<string, unknown>;
       file_path: string | null;
       download_url: string | null;
       download_url_expiry: string | null;
