@@ -2,12 +2,12 @@
 
 This file tracks all pending work items for the GPC App platform. Codex should update this file as work progresses.
 
-**Last Updated:** 2025-12-23
+**Last Updated:** 2025-12-24
 **Status Legend:** `[ ]` Pending | `[~]` In Progress | `[x]` Complete | `[!]` Blocked
 
 **Summary (current state):**
-- Completed: A1 (code fix), A2 (code hardening), B1–B7, E1, E3, F5
-- Blocked (manual/external): A1 ChatGPT verification, A2 ChatGPT sandbox test, C1/C2 template & mapping repairs, D1 22-page pack (missing sheets), F4 test fixtures
+- Completed: A1 (code fix), A2 (code hardening), B1–B7, D2, E1, E3, F1–F5, H1–H3
+- Blocked (manual/external): A1 ChatGPT verification, A2 ChatGPT sandbox test, C1/C2 template & mapping repairs, D1 22-page pack (missing sheets), F4 unit/integration tests (needs expected outputs)
 
 ---
 
@@ -198,7 +198,7 @@ These enable "structure the deal however I want."
 - [x] Matrix output format for all combinations
 - [x] Integration with MCP response
 
-**Current Status:** ScenarioRunner exists with exit cap/month grid. Rate grid not implemented.
+**Current Status:** ScenarioRunner grid outputs are wired into MCP responses when enabled.
 
 ---
 
@@ -243,10 +243,8 @@ These enable "structure the deal however I want."
 ---
 
 ### D2. Pixel-Diff Coverage Expansion
-- [x] Currently comparing 2 pages (Investment Summary + Assumptions)
-- [x] Add Rent Roll comparison
-- [x] Add Returns Summary comparison
-- [x] Add Operating Budget comparison
+- [x] Expanded pixel-diff coverage to 7 pages total
+- [x] Added Returns Summary, Error Check, Model Outputs, Annual CF, Rent Roll, Renovation Budget, and Monthly CF (page 1)
 
 ---
 
@@ -304,6 +302,22 @@ These enable "structure the deal however I want."
 ### F5. Discount Rate Inputs (NPV)
 - [x] Add discount rate inputs to schema
 - [x] Compute NPV for levered/unlevered cashflows
+
+---
+
+## H. Template Library / Deal Engine V0
+
+### H1. Template Library v1
+- [x] 13 template definitions with required modules
+
+### H2. Deal Engine v0 Schema
+- [x] Draft 2020-12 schema with 10 module types
+- [x] Module metadata registry stub
+
+### H3. Fixtures + Validation
+- [x] 13 minimal fixtures (one per template type)
+- [x] AJV validation script + package.json runner
+- [x] Contract + template library docs
 
 ---
 
@@ -473,6 +487,17 @@ Use this section to log progress during work sessions.
 - Added Deal Engine V0 contract and template library docs
 - Adjusted LoanV0 rate schema to satisfy AJV strictRequired
 - Files: testcases/deal_engine_v0/fixtures/*.json, scripts/validate-deal-engine-fixtures.mjs, package.json, docs/DEAL_ENGINE_V0_CONTRACT.md, docs/TEMPLATE_LIBRARY_V1.md, testcases/deal_engine_v0/README.md, contracts/deal_engine_v0.schema.json
+2025-12-24 09:15 - [Session] Full session accomplishments
+- IRR solver robustness fix (Brent's method fallback)
+- B7 scenario grid wired to MCP response
+- E1 SQLite job persistence for Excel engine
+- D2 expanded pixel-diff coverage to 7 pages
+- Schema update: added reserves + other_operating fields and growth rates
+- UX fix: eliminated needs_info loop with sensible defaults
+- Excel mapping fix: corrected expenses, reserves, and debt funding mappings
+- Template Library v1: 13 template definitions
+- Deal Engine v0 schema: Draft 2020-12 with 10 module types
+- Fixtures + validation: 13 fixtures + AJV validation script
 ```
 
 ---
